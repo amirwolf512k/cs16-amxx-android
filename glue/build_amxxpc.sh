@@ -12,7 +12,7 @@ ROOT=$(dirname "$HERE")
 OUT="$HERE/out/amxxpc"
 mkdir -p "$OUT"
 
-ndk-build \
+"$NDK_BUILD" \
 	NDK_PROJECT_PATH="$OUT" \
 	NDK_APPLICATION_MK="$HERE/amxxpc/jni/Application.mk" \
 	APP_BUILD_SCRIPT="$HERE/amxxpc/jni/Android.mk" \

@@ -17,7 +17,7 @@ echo ">> using $(dirname "$NDK_BUILD")"
 OUT="$HERE/out/amxx"
 mkdir -p "$OUT"
 
-ndk-build \
+"$NDK_BUILD" \
 	NDK_PROJECT_PATH="$OUT" \
 	NDK_APPLICATION_MK="$HERE/Application.mk" \
 	APP_BUILD_SCRIPT="$HERE/Android.mk" \
