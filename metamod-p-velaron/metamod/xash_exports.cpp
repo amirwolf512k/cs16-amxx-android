@@ -67,6 +67,14 @@ static void *gamedll_resolve(const char *name) {
 
 typedef void (*mm_linkentity_func)( entvars_t *pev );
 
+// Leading fields of the engine's physics_interface_t (see hlsdk physint.h).
+// Everything after SV_CreateEntity may differ between engine builds, so only
+// these two are written; the engine zeroes the remainder before the call.
+struct mm_physics_interface_head {
+        int version;
+        int (*SV_CreateEntity)( edict_t *pent, const char *szName );
+};
+
 static int mm_DispatchCreateEntity( edict_t *pent, const char *szName ) {
         mm_linkentity_func spawn;
 
@@ -83,13 +91,7 @@ static int mm_DispatchCreateEntity( edict_t *pent, const char *szName ) {
 
 extern "C" __attribute__((visibility("default")))
 int Server_GetPhysicsInterface(int version, void *physics_api, void *table) {
-        // The engine's physics_interface_t starts with:
-        //   int  version;
-        //   int  (*SV_CreateEntity)(edict_t *, const char *);
-        // Everything after it may differ between engine builds, so only the
-        // first two fields are written here (the engine zeroes the rest).
-        struct { int version; int (*SV_CreateEntity)(edict_t *, const char *); } *iface
-                = (struct { int version; int (*SV_CreateEntity)(edict_t *, const char *); }) table;
+        mm_physics_interface_head *iface = (mm_physics_interface_head *) table;
 
         (void) physics_api;
 
