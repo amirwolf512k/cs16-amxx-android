@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
 
         // bump this when assets/addons.zip is updated so the bundle
         // gets re-extracted into the game directory
-        private static final String ADDONS_VERSION = "amxx-v18-repo";
+        private static final String ADDONS_VERSION = "amxx-v19-repo";
 
         private boolean mPermissionAsked = false;
 

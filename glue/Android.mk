@@ -30,3 +30,8 @@ include $(AMXXROOT)/modules/json/Android.mk
 
 $(call import-add-path,$(AMXXROOT))
 $(call import-module,third_party)
+
+# v19: hamsandwich links against our libffcall-compatible ARM trampoline
+# shim (LOCAL_STATIC_LIBRARIES += trampoline in modules/hamsandwich/Android.mk)
+$(call import-add-path,$(GLUE_DIR))
+$(call import-module,trampoline)

@@ -31,7 +31,7 @@ object ValveAddonsInstaller {
         // v12: the zip now carries the "valve/" directory prefix (previous
         // packs were missing it, so the addons landed in <xash>/addons
         // instead of <xash>/valve/addons and the game never saw them).
-        const val CURRENT_VERSION = "v18"
+        const val CURRENT_VERSION = "v19"
 
         fun ensureInstalled(ctx: Context) {
                 val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
