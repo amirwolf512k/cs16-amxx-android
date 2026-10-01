@@ -62,6 +62,14 @@ EOF
 
 # ---- run ----
 cd "$TEST"
+# metamod compiles with -D__ANDROID__ (exact phone code paths), so its
+# gamedll autodetection goes through XASH3D_GAMELIBDIR looking for
+# libserver_hardfp.so — same mechanism as the phone (where GAMELIBDIR is
+# the game APK's nativeLibraryDir). Provide it, or the chain runs with no
+# gamedll and every entity fails with "No spawn function".
+mkdir -p "$TEST/gamelibs"
+cp "$GAMELIB" "$TEST/gamelibs/libserver_hardfp.so"
+export XASH3D_GAMELIBDIR="$TEST/gamelibs"
 export XASH3D_AMXX_LIBDIR="$TEST/amxxpriv"
 export LD_LIBRARY_PATH="$ENGINE/build/filesystem:$ENGINE/3rdparty/hlsdk-portable/build/dlls:$LD_LIBRARY_PATH"
 timeout 60 "$ENGINE/build/engine/xash" \
