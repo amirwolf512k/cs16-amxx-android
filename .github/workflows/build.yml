@@ -71,14 +71,20 @@ jobs:
           done
 
           # ---- mainui_cpp: game menu (libmenu.so, engine-suffixed neutral name) ----
+          # The CMakeLists references ${CMAKE_SOURCE_DIR}/common/interface.cpp —
+          # it is designed to be add_subdirectory'ed from the game root; provide
+          # the file for standalone builds. Headers come from the bundled
+          # sdk_includes/ (do NOT point XASH_SDK at hlsdk: it lacks menu_int.h).
+          mkdir -p cs16-client-main/3rdparty/mainui_cpp/common
+          cp cs16-client-main/common/interface.cpp cs16-client-main/3rdparty/mainui_cpp/common/
+          cp cs16-client-main/common/interface.h   cs16-client-main/3rdparty/mainui_cpp/common/
           for ABI in arm64-v8a armeabi-v7a; do
             cmake -S cs16-client-main/3rdparty/mainui_cpp -B build/mainui-$ABI \
               -DCMAKE_TOOLCHAIN_FILE="$TC" \
               -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-21 -DANDROID_NDK="$ANDROID_NDK_HOME" \
               -DCMAKE_SYSTEM_NAME=Android -DCMAKE_SYSTEM_VERSION=21 \
               -DCMAKE_BUILD_TYPE=Release \
-              -DBUILD_AS_PART_OF_ENGINE=ON \
-              -DXASH_SDK="$PWD/xash3d-fwgs-master/3rdparty/hlsdk-portable"
+              -DBUILD_AS_PART_OF_ENGINE=ON
             cmake --build build/mainui-$ABI -j"$(nproc)"
             cmake --install build/mainui-$ABI --prefix "$JNILIBS/$ABI"
           done
