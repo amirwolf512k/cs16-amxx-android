@@ -96,7 +96,7 @@ public:
                         mprotect(addr,sysconf(_SC_PAGESIZE),PROT_READ|PROT_WRITE);
 #endif
                         if (tramp)
-                                ivtable[entry]=(intptr_t)tramp;
+                                ivtable[entry]=(intptr_t *)tramp;
 
                         size_t len=strlen(name);
                         ent=new char[len+1];
@@ -118,7 +118,7 @@ public:
                 mprotect(addr,sysconf(_SC_PAGESIZE),PROT_READ|PROT_WRITE);
 #endif
 
-                ivtable[entry]=(intptr_t)func;
+                ivtable[entry]=(intptr_t *)func;
 #if defined(USE_LIBFFCALL)
                 if (tramp)
                         free_trampoline( (__TR_function)tramp );
