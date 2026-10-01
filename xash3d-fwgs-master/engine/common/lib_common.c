@@ -547,9 +547,11 @@ void COM_GetCommonLibraryPath( ECommonLibraryType eLibType, char *out, size_t si
                 }
                 else COM_GenerateServerLibraryPath( NULL, out, size );
 
-#if XASH_ANDROID
+#if XASH_LINUX
                 // AMX Mod X support: automatically load metamod instead of the
-                // server library if it is installed into addons/metamod
+                // server library if it is installed into addons/metamod.
+                // v10: enabled on all Linux builds (not just Android) so the
+                // CI arm64 host runner can exercise the exact same chain.
                 {
                         char mmpath[MAX_SYSPATH];
 

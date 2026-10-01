@@ -51,8 +51,13 @@ plugin_info_t Plugin_info =
 meta_globals_t *gpMetaGlobals;
 gamedll_funcs_t *gpGamedllFuncs;
 mutil_funcs_t *gpMetaUtilFuncs;
-enginefuncs_t g_engfuncs;
-globalvars_t *gpGlobals;
+// v10: hidden visibility — each module carries its own copies of these
+// (from amxxmodule.cpp). If the core exported them, ELF interposition at
+// dlopen time would bind the modules' accesses to the core's instances
+// while metamod's GiveFnptrsToDll writes the module's own copy — resulting
+// in a NULL gpGlobals inside module code (crash at gpGlobals->maxClients).
+__attribute__((visibility("hidden"))) enginefuncs_t g_engfuncs;
+__attribute__((visibility("hidden"))) globalvars_t *gpGlobals;
 
 funEventCall modMsgsEnd[MAX_REG_MSGS];
 funEventCall modMsgs[MAX_REG_MSGS];

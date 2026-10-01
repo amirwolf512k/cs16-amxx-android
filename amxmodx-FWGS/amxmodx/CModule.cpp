@@ -157,6 +157,21 @@ bool CModule::attachModule()
                 return false;
         }
 
+        // v10: make sure the module has engine globals. Modules are supposed
+        // to receive g_engfuncs/gpGlobals through metamod's GiveFnptrsToDll
+        // during LOAD_PLUGIN; when that registration fails (observed on the
+        // Android chain) the module would run with gpGlobals == NULL and
+        // crash on its first engine access (e.g. OnPluginsLoaded ->
+        // gpGlobals->maxClients). Feeding it the core's own tables is
+        // harmless when metamod already did it (idempotent memcpy).
+        {
+                typedef void (*GIVE_ENGINE_FN)(enginefuncs_t *, globalvars_t *);
+                GIVE_ENGINE_FN give = (GIVE_ENGINE_FN)DLPROC(m_Handle, "GiveFnptrsToDll");
+
+                if (give)
+                        give(&g_engfuncs, gpGlobals);
+        }
+
         if (m_Amxx)
         {
                 // new

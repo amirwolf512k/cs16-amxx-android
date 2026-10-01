@@ -10,6 +10,7 @@
 #define _HL_CONVERSION_TYPE_H_
 
 #include <stddef.h>   // size_t
+#include <cstdint>    // uintptr_t (v10: not pulled in by every TU chain)
 #include <extdll.h>   // edict_t, etc.
 #include <sdk_util.h> // FNullEnt, INDEXENT, etc.
 

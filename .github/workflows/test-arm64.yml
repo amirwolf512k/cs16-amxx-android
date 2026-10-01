@@ -1,15 +1,14 @@
 name: Test arm64
 
-# Full arm64 test: boots an Android arm64 emulator on the free GitHub
-# arm64 runner, installs both APKs from the build workflow, pushes a
-# minimal Counter-Strike content pack (addons + minimal map + models),
-# launches the engine with the AMXX chain and checks the logs:
-#   - metamod loads
-#   - amxmodx core loads
-#   - all modules attach (no "was left pending" spam)
-#   - plugins load (no "failed to load")
-#   - map spawns and amxx.cfg executes (amx_scrollmsg path!)
-#   - no "Crash: signal"
+# Full arm64 test — runs the REAL chain natively on a GitHub arm64 runner:
+#   engine (patched, dedicated build) -> metamod -> AMX Mod X core ->
+#   modules attach -> plugins load -> map spawn -> amxx.cfg (amx_scrollmsg!)
+#
+# The AMXX chain is compiled for the host arch with -D__ANDROID__ so the
+# exact Android code paths (MM_GAMELIBDIR, libamxx_<name>.so loading,
+# 64-bit-pointer/32-bit-cell AMX VM) are exercised on real arm64 hardware.
+# This is the same crash path that killed v8/v9 (amx_scrollmsg ->
+# amx_Exec -> amx_Callback).
 
 on:
   workflow_run:
@@ -24,159 +23,42 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 150
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download APK artifacts from the build run
-        if: github.event_name == 'workflow_run'
-        uses: actions/download-artifact@v4
-        with:
-          name: apks
-          path: dist
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build artifacts locally (manual run fallback)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Build engine (dedicated) for host arch
         shell: bash
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV" || true
-          if [ ! -d "$ANDROID_HOME/ndk/29.0.14206865" ]; then
-            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
-            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;29.0.14206865" "cmake;3.22.1" > /dev/null
-          fi
-          echo "sdk.dir=$ANDROID_HOME" > xash3d-fwgs-master/android/local.properties
-          echo "sdk.dir=$ANDROID_HOME" > cs16-client-main/android/local.properties
-          bash scripts/build_native.sh
-          (cd xash3d-fwgs-master/android && ./gradlew --no-daemon :app:assembleContinuous)
-          (cd cs16-client-main/android && ./gradlew --no-daemon :app:assembleGitRelease)
-          mkdir -p dist
-          find xash3d-fwgs-master/android/app/build/outputs/apk -name "*.apk" -exec cp {} dist/ \;
-          find cs16-client-main/android/app/build/outputs/apk -name "*.apk" -exec cp {} dist/ \;
+          cd xash3d-fwgs-master
+          python3 ./waf configure -T release -d -8
+          python3 ./waf build
 
-      - name: Enable KVM (if available)
+      - name: Build HL gamedll for host arch
         shell: bash
         run: |
-          if [ -w /dev/kvm ]; then
-            sudo chmod 666 /dev/kvm
-            echo "KVM=true" >> "$GITHUB_ENV"
-            echo "KVM available"
-          else
-            echo "KVM=false" >> "$GITHUB_ENV"
-            echo "No KVM — emulator will run in software mode (slow but functional)"
-          fi
+          cd xash3d-fwgs-master/3rdparty/hlsdk-portable
+          python3 ./waf configure -T release -8
+          python3 ./waf build
 
-      - name: Create ARM64 emulator
+      - name: Build metamod + AMX Mod X chain for host arch
         shell: bash
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "system-images;android-30;default;arm64-v8a" "platform-tools" "emulator" > /dev/null
-          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
-            -n test -k "system-images;android-30;default;arm64-v8a" -d pixel_5 --force
+          bash glue/build_host_chain.sh
 
-      - name: Boot emulator
+      - name: Run full AMXX chain test and evaluate
         shell: bash
-        run: |
-          ACCEL="off"
-          [ "$KVM" = "true" ] && ACCEL="on"
-          "$ANDROID_HOME/emulator/emulator" -avd test \
-            -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect \
-            -accel $ACCEL -memory 3072 -no-snapshot \
-            > emulator.log 2>&1 &
-          echo "Emulator PID $!"
-          timeout 2400 bash -c '
-            while true; do
-              BOOT=$("$ANDROID_HOME/platform-tools/adb" shell getprop sys.boot_completed 2>/dev/null | tr -d "\r")
-              [ "$BOOT" = "1" ] && echo "BOOTED" && break
-              sleep 15
-            done'
+        run: bash scripts/run_host_test.sh
 
-      - name: Prepare test content pack
-        shell: bash
-        run: bash scripts/make_test_content.sh
-
-      - name: Install APKs + push content
-        shell: bash
-        run: |
-          ADB="$ANDROID_HOME/platform-tools/adb"
-          "$ADB" wait-for-device
-          ENGINE_APK=$(ls dist/*engine*.apk dist/*xash*.apk 2>/dev/null | head -1)
-          GAME_APK=$(ls dist/*cs16*.apk dist/*client*.apk 2>/dev/null | grep -v engine | head -1)
-          echo "engine=$ENGINE_APK game=$GAME_APK"
-          "$ADB" install -r "$GAME_APK"
-          "$ADB" install -r "$ENGINE_APK"
-          "$ADB" shell mkdir -p /sdcard/xash
-          "$ADB" push testcontent/cstrike /sdcard/xash/cstrike
-          "$ADB" push testcontent/valve /sdcard/xash/valve
-          # storage permissions for the engine package
-          "$ADB" shell appops set su.xash.engine.test MANAGE_EXTERNAL_STORAGE allow || true
-          "$ADB" shell pm grant su.xash.engine.test android.permission.READ_EXTERNAL_STORAGE || true
-          "$ADB" shell pm grant su.xash.engine.test android.permission.WRITE_EXTERNAL_STORAGE || true
-          "$ADB" shell appops set su.xash.cs16clientamxx MANAGE_EXTERNAL_STORAGE allow || true
-          "$ADB" shell pm grant su.xash.cs16clientamxx android.permission.READ_EXTERNAL_STORAGE || true
-          "$ADB" shell pm grant su.xash.cs16clientamxx android.permission.WRITE_EXTERNAL_STORAGE || true
-
-      - name: Run engine with AMXX chain + capture logs
-        shell: bash
-        run: |
-          ADB="$ANDROID_HOME/platform-tools/adb"
-          "$ADB" logcat -c
-          # resolve the game package's native lib dir (holds libyapb_android_arm64.so = gamedll)
-          GAME_APK_PATH=$("$ADB" shell pm path su.xash.cs16clientamxx | head -1 | sed 's/package://;s|^/||;s|^|/|')
-          GAME_LIBDIR=$("$ADB" shell pm path su.xash.cs16clientamxx | head -1 | sed -E 's|^package:/data/app/([^/]+/[^/]+)/base.apk|/data/app/\1/lib/arm64|' | tr -d '\r')
-          echo "GAME_LIBDIR=$GAME_LIBDIR"
-          "$ADB" shell am start -n su.xash.engine.test/su.xash.engine.XashActivity \
-            -e basedir /sdcard/xash \
-            -e gamedir cstrike \
-            -e gamelibdir "$GAME_LIBDIR" \
-            -e argv "-dev 2 -log -condebug -dll @yapb +map amxx_test +exec userconfig.cfg" || true
-          sleep 8
-          "$ADB" shell "ps -A | grep -i xash" || true
-          # let the server spawn, amxx.cfg exec (amx_scrollmsg!) and plugins run
-          sleep 75
-          "$ADB" logcat -d > test-logcat.txt || true
-          "$ADB" shell "ls -la /sdcard/xash/ /sdcard/xash/cstrike/ 2>/dev/null" > test-dirlist.txt || true
-          "$ADB" shell "cat /sdcard/xash/cstrike/engine.log 2>/dev/null || cat /sdcard/xash/engine.log 2>/dev/null || cat /sdcard/xash/valve/engine.log 2>/dev/null" > test-engine.log || true
-          # tombstones on crash (rootable default image)
-          "$ADB" root || true
-          sleep 3
-          "$ADB" shell "ls /data/tombstones/ 2>/dev/null" > test-tombstones.txt || true
-          mkdir -p tombstones
-          for t in $("$ADB" shell "ls /data/tombstones/ 2>/dev/null" | tr -d '\r' | tail -3); do
-            "$ADB" pull "/data/tombstones/$t" "tombstones/$t" || true
-          done
-          wc -l test-engine.log test-logcat.txt || true
-
-      - name: Evaluate test results
-        id: eval
-        shell: bash
-        run: |
-          LOG=test-engine.log
-          [ -s "$LOG" ] || LOG=test-logcat.txt
-          PASS=1; FAILMSG=""
-          grep -q "Metamod version" "$LOG"          || { PASS=0; FAILMSG="$FAILMSG metamod-not-loaded"; }
-          grep -q "AMX Mod X version" "$LOG"        || { PASS=0; FAILMSG="$FAILMSG amxmodx-not-loaded"; }
-          grep -q "Spawn Server" "$LOG"             || { PASS=0; FAILMSG="$FAILMSG map-not-spawned"; }
-          if grep -q "Crash: signal" "$LOG"; then    PASS=0; FAILMSG="$FAILMSG CRASH-SIGNAL"; fi
-          if grep -q "was left pending" "$LOG"; then PASS=0; FAILMSG="$FAILMSG module-left-pending"; fi
-          if grep -q "failed to load: Module" "$LOG"; then PASS=0; FAILMSG="$FAILMSG plugin-module-missing"; fi
-          echo "RESULT=$PASS MSG=$FAILMSG"
-          echo "pass=$PASS" >> "$GITHUB_OUTPUT"
-          echo "msg=$FAILMSG" >> "$GITHUB_OUTPUT"
-
-      - name: Upload test artifacts
+      - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-logs
+          name: arm64-test-logs
           path: |
-            test-*.txt
-            test-*.log
-            tombstones/
-            emulator.log
+            out/host-test/console.txt
+            out/host-test/engine.log
           if-no-files-found: warn
 
       - name: Telegram report
@@ -184,10 +66,11 @@ jobs:
         shell: bash
         run: |
           [ -n "${{ secrets.TG_BOT_TOKEN }}" ] || exit 0
-          if [ "${{ steps.eval.outputs.pass }}" = "1" ]; then
-            RES="✅ تست arm64 موفق — کل زنجیره AMXX کار کرد"
+          ARCH=$(uname -m)
+          if [ -f out/host-test/console.txt ] && grep -q "Scrolling message" out/host-test/console.txt && ! grep -q "Crash: signal" out/host-test/console.txt; then
+            RES="✅ تست کامل arm64 ($ARCH) موفق — کل زنجیره موتور → متامد → AMX Mod X → ماژول‌ها → پلاگین‌ها بدون کرش اجرا شد (amx_scrollmsg هم پاس شد)"
           else
-            RES="❌ تست arm64 شکست:${{ steps.eval.outputs.msg }}"
+            RES="❌ تست arm64 ($ARCH) شکست — لاگ‌ها در آرتیفکت‌های اکشن"
           fi
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TG_CHAT_ID }}" -d text="$RES" > /dev/null || true

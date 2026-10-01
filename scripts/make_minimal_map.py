@@ -8,15 +8,16 @@ AMXX/metamod chain runs end-to-end on the device.
 """
 import struct, sys
 
-L_ENTITIES, L_PLANES, L_VERTEXES, L_VISIBILITY, L_NODES, L_TEXINFO, L_FACES, \
-L_LIGHTING, L_CLIPNODES, L_LEAFS, L_MARKSURFACES, L_EDGES, L_SURFEDGES, \
-L_MODELS, L_TEXTURES = range(15)
+# GoldSrc BSP30 on-disk lump order (matches xash3d-fwgs LUMP_ enum)
+L_ENTITIES, L_PLANES, L_TEXTURES, L_VERTEXES, L_VISIBILITY, L_NODES, L_TEXINFO, \
+L_FACES, L_LIGHTING, L_CLIPNODES, L_LEAFS, L_MARKSURFACES, L_EDGES, L_SURFEDGES, \
+L_MODELS = range(15)
 
 EMPTY, SOLID = -1, -2
 P_X, P_Y, P_Z = 0, 1, 2
 
 def plane(n, d, t):
-    return struct.pack('<3ffd', n[0], n[1], n[2], d, t)
+    return struct.pack('<3ffi', n[0], n[1], n[2], d, t)
 
 def node(planenum, front, back, firstface, numfaces):
     b = [-192, -192, -192, 192, 192, 192]
@@ -31,7 +32,7 @@ def leaf(contents, marks, visofs=-1):
     return struct.pack('<ii6h2h4B', contents, visofs, *b, marks, (1 if marks >= 0 else 0), *amb)
 
 def face(planenum, firstedge, numedges, texinfo=0, side=0):
-    return struct.pack('<hihih4Bi', planenum, side, firstedge, numedges, texinfo, 0, 0, 0, 0, -1)
+    return struct.pack('<hhihh4Bi', planenum, side, firstedge, numedges, texinfo, 0, 0, 0, 0, -1)
 
 def clipnode(planenum, front, back):
     return struct.pack('<i2h', planenum, front, back)
@@ -71,18 +72,19 @@ def build():
             surfedges.append(len(edges) - 1)
         faces.append(face(pnum, start, 4))
 
-    # BSP tree: chain through the 6 planes; inside ends in leaf0 (EMPTY)
+    # BSP tree: chain through the 6 planes; leaf 0 MUST be solid (BSP convention),
+    # the room interior ends in leaf 1 (EMPTY)
     nodes = [
-        node(0, 1, -2, 0, 1),   # node0: plane0, front->node1, back->leaf1(solid); face0
-        node(1, 2, -3, 1, 1),   # node1: plane1; face1
-        node(2, 3, -4, 2, 1),   # node2: plane2; face2
-        node(3, 4, -5, 3, 1),   # node3: plane3; face3
-        node(4, 5, -6, 4, 1),   # node4: plane4; face4
-        node(5, -2, -1, 5, 1),  # node5: plane5, front->leaf1(solid), back->leaf0(empty); face5
+        node(0, 1, -1, 0, 1),   # node0: plane0, front->node1, back->leaf0(solid); face0
+        node(1, 2, -2, 1, 1),   # node1: plane1; face1
+        node(2, 3, -1, 2, 1),   # node2: plane2; face2
+        node(3, 4, -1, 3, 1),   # node3: plane3; face3
+        node(4, 5, -1, 4, 1),   # node4: plane4; face4
+        node(5, -1, -2, 5, 1),  # node5: plane5, front->leaf0(solid), back->leaf1(empty); face5
     ]
     leafs = [
-        leaf(EMPTY, 0),   # leaf0: the room (marks -> face0)
-        leaf(SOLID, -1),
+        leaf(SOLID, -1),  # leaf0: always-solid outside leaf (engine requirement)
+        leaf(EMPTY, 0),   # leaf1: the room (marks -> all faces)
     ]
     marks = struct.pack('<6H', 0, 1, 2, 3, 4, 5)  # leaf0 sees all 6 faces
 
@@ -104,8 +106,11 @@ def build():
     m1 = bytes([0x40] * 64); m2 = bytes([0x40] * 16); m3 = bytes([0x40] * 4); m4 = bytes([0x40])
     pal = bytes([0x60, 0x60, 0x60]) * 256
     tdata = m1 + m2 + m3 + m4 + pal
-    thdr = struct.pack('<16sII4I', tex_name, w, h, 40, 40 + len(m1),
-                       40 + len(m1) + len(m2), 40 + len(m1) + len(m2) + len(m3))
+    # dmiptexlump_t: int count; int dataofs[count]; miptex headers; data
+    base = 4 + 4 + 40  # count + dataofs[1] + one miptex header
+    thdr = struct.pack('<ii', 1, 8) + struct.pack('<16sII4I', tex_name, w, h, base,
+                                                  base + len(m1), base + len(m1) + len(m2),
+                                                  base + len(m1) + len(m2) + len(m3))
     textures = thdr + tdata
 
     entities = (
@@ -121,6 +126,7 @@ def build():
     lumps = {
         L_ENTITIES: entities,
         L_PLANES: b''.join(planes),
+        L_TEXTURES: textures,
         L_VERTEXES: vertexes,
         L_VISIBILITY: b'',
         L_NODES: b''.join(nodes),
@@ -133,16 +139,15 @@ def build():
         L_EDGES: b''.join(edges),
         L_SURFEDGES: struct.pack('<%di' % len(surfedges), *surfedges),
         L_MODELS: models,
-        L_TEXTURES: textures,
     }
 
-    header = struct.pack('<Ii', 30, len(lumps))
+    header = struct.pack('<I', 30)  # BSP30: version int only, lumps follow immediately
     out = header
     body = b''
-    cur = 8 + len(lumps) * 8
+    cur = 4 + len(lumps) * 8  # version(4) + 15 x lump(fileofs+filelen = 8 bytes)
     for i in range(len(lumps)):
         d = lumps[i]
-        out += struct.pack('<III', i, cur, len(d))
+        out += struct.pack('<II', cur, len(d))
         pad = (4 - (len(d) & 3)) & 3
         body += d + b'\0' * pad
         cur += len(d) + pad
