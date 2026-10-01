@@ -37,8 +37,8 @@ ENGINE="$ROOT/xash3d-fwgs-master/android/app/src/main"
 # ---- fallback + the game's nativeLibraryDir both look these names up)
 mkdir -p "$CS16/jniLibs/arm64-v8a" "$CS16/jniLibs/armeabi-v7a"
 for abi in arm64-v8a armeabi-v7a; do
-	cp glue/out/amxx/libs/$abi/libamxx_*.so          "$CS16/jniLibs/$abi/"
-	cp glue/out/amxx/libs/$abi/libmm_amxmodx.so      "$CS16/jniLibs/$abi/"
+        cp glue/out/amxx/libs/$abi/libamxx_*.so          "$CS16/jniLibs/$abi/"
+        cp glue/out/amxx/libs/$abi/libmm_amxmodx.so      "$CS16/jniLibs/$abi/"
 done
 cp glue/out/metamod/libmetamod_android_arm64.so   "$CS16/jniLibs/arm64-v8a/"
 cp glue/out/metamod/libmetamod_android_armv7a.so  "$CS16/jniLibs/armeabi-v7a/"
@@ -56,6 +56,7 @@ cp glue/out/amxxpc/libs/arm64-v8a/libamxxpc.so     "$ENGINE/jniLibs/arm64-v8a/"
 cp glue/out/amxxpc/libs/armeabi-v7a/libamxxpc.so   "$ENGINE/jniLibs/armeabi-v7a/"
 
 # ---- engine assets: valve addons zip
+mkdir -p "$ENGINE/assets"
 cp out/valve-addons.zip "$ENGINE/assets/valve-addons.zip"
 
 echo ">> staging complete"
