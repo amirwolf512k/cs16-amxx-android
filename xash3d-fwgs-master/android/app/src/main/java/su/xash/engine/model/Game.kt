@@ -97,6 +97,16 @@ class Game(val ctx: Context, val basedir: File, val gameInfoFile: File) {
 
                 commandLineArgs += pref.getString("arguments", "-console -log") ?: ""
 
+                // v12: engine-only games (valve/HL): the bundled libhl_android_<arch>.so
+                // lives in THIS app's nativeLibraryDir; expose it as XASH3D_GAMELIBDIR so
+                // the library loader's first tier and metamod's (-D__ANDROID__) gamedll
+                // autodetection find it. Without this, metamod runs with no gamedll and
+                // every map entity fails with "No spawn function". External games
+                // (cs16client) already pass their own dir via the "gamelibdir" extra.
+                if (!externalGame) {
+                        envList += arrayOf("XASH3D_GAMELIBDIR", ctx.applicationInfo.nativeLibraryDir)
+                }
+
                 if (externalGame && packageNames != null) {
                         var packageName: String? = null
                         var gameLibDir: String? = null
