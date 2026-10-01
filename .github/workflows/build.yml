@@ -10,6 +10,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      # cs16-client requires engine buildnum >= 4190 (= 2026-09-20 build
+      # date in upstream's date scheme). Pin the effective build date so
+      # Q_buildnum() passes the client's version gate.
+      XASH_BUILD_COMMIT_DATE: "2026-10-01"
     steps:
       - name: Checkout
         uses: actions/checkout@v4

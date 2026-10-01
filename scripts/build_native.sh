@@ -48,16 +48,41 @@ mkdir -p "$CS16/assets"
 cp -r cs16-client-main/3rdparty/cs16client-extras/. "$CS16/assets/"
 rm -rf "$CS16/assets/addons"   # never ship the extracted dir, only the zip
 cp out/cstrike-addons.zip "$CS16/assets/addons.zip"
-echo "amxx-v10-repo" > "$CS16/assets/addons_version.txt"
+echo "amxx-v11-repo" > "$CS16/assets/addons_version.txt"
 
-# ---- engine jniLibs: libamxxpc
+# ---- engine jniLibs: libamxxpc (SMA compiler executable, packaged as
+# ---- lib*.so so Android allows exec from nativeLibraryDir)
 mkdir -p "$ENGINE/jniLibs/arm64-v8a" "$ENGINE/jniLibs/armeabi-v7a"
-cp glue/out/amxxpc/libs/arm64-v8a/libamxxpc.so     "$ENGINE/jniLibs/arm64-v8a/"
-cp glue/out/amxxpc/libs/armeabi-v7a/libamxxpc.so   "$ENGINE/jniLibs/armeabi-v7a/"
+for abi in arm64-v8a armeabi-v7a; do
+        SRC_PC="$ROOT/glue/out/amxxpc/libs/$abi/libamxxpc"
+        [ -f "$SRC_PC" ] || SRC_PC="$ROOT/glue/out/amxxpc/libs/$abi/libamxxpc.so"
+        cp "$SRC_PC" "$ENGINE/jniLibs/$abi/libamxxpc.so"
+done
 
 # ---- engine assets: valve addons zip
 mkdir -p "$ENGINE/assets"
 cp out/valve-addons.zip "$ENGINE/assets/valve-addons.zip"
+
+# ---- pin the effective engine build date -----------------------------------
+# cs16-client aborts with "Xash3D FWGS version check failed!" when the engine
+# buildnum < MIN_XASH_VERSION (4190 = 2026-09-20 in upstream's date scheme).
+# public/wscript honours XASH_BUILD_COMMIT_DATE; default it here so plain
+# local builds also pass the gate.
+export XASH_BUILD_COMMIT_DATE="${XASH_BUILD_COMMIT_DATE:-2026-10-01}"
+
+# ---- make git metadata visible to the engine's waf build ------------------
+# waf (public/wscript) looks for .git inside xash3d-fwgs-master only. In this
+# monorepo .git lives at the repo root, so without a pointer file the engine
+# is built with an empty commit date -> Q_buildnum() == -1 -> cs16-client
+# aborts with "Xash3D FWGS version check failed!" (g_iXash < 4190).
+if [ ! -d "$ROOT/xash3d-fwgs-master/.git" ]; then
+        if GITDIR=$(git -C "$ROOT" rev-parse --absolute-git-dir 2>/dev/null); then
+                echo "gitdir: $GITDIR" > "$ROOT/xash3d-fwgs-master/.git"
+                echo ">> wrote $ROOT/xash3d-fwgs-master/.git -> $GITDIR"
+        else
+                rm -f "$ROOT/xash3d-fwgs-master/.git"
+        fi
+fi
 
 echo ">> staging complete"
 ls -la "$CS16/jniLibs/arm64-v8a" "$ENGINE/jniLibs/arm64-v8a" | head -20

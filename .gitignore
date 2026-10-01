@@ -42,3 +42,4 @@ local.properties
 *.log
 testcontent/
 .DS_Store
+xash3d-fwgs-master/.git

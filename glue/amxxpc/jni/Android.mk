@@ -52,4 +52,11 @@ LOCAL_SRC_FILES := \
         $(AMXXPC)/Binary.cpp
 LOCAL_LDLIBS := -lz -ldl -lm
 LOCAL_STATIC_LIBRARIES := amxxpc32
-include $(BUILD_SHARED_LIBRARY)
+# v11 fix: this must be a REAL executable, not a shared library —
+# CompilerDialogFragment / FullCompilerDialogFragment run it through
+# ProcessBuilder (execve). A shared object has no ELF entry point, so
+# exec'ing it crashed (exit 133) and the in-app compiler never worked.
+# Output name libamxxpc; build_native.sh copies it to the engine jniLibs
+# as libamxxpc.so (Android only execs lib*.so from nativeLibraryDir).
+LOCAL_MODULE_FILENAME := libamxxpc
+include $(BUILD_EXECUTABLE)

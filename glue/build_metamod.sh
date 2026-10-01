@@ -39,7 +39,11 @@ build_abi() {
     fi
   done
 
-  $CXX -shared -o "$OUT/libmetamod_android_$ARCHNAME.so" $OBJDIR/*.o -ldl -lm -Wl,--build-id=sha1
+  # -static-libstdc++: link libc++ statically so the lib has no
+  # libc++_shared.so DT_NEEDED (it is dlopen'ed from the game/engine
+  # namespaces where libc++_shared.so is not visible — otherwise
+  # "dlopen failed: library libc++_shared.so not found").
+  $CXX -shared -o "$OUT/libmetamod_android_$ARCHNAME.so" $OBJDIR/*.o -ldl -lm -static-libstdc++ -Wl,--build-id=sha1
   echo "  => $OUT/libmetamod_android_$ARCHNAME.so"
 }
 
