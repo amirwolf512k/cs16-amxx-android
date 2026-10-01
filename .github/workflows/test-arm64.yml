@@ -58,6 +58,27 @@ jobs:
         shell: bash
         run: bash scripts/run_host_test.sh
 
+      # v17: client-connect regression test (the v16 device crash happened at
+      # "Trying to connect with modern protocol" — dedicated CI runs never
+      # connect a client, so that whole layer was untested)
+      - name: Install client-test dependencies
+        shell: bash
+        run: |
+          sudo apt-get update -qq || true
+          sudo apt-get install -y -qq libsdl2-dev xvfb x11-utils || \
+            sudo apt-get install -y -qq xvfb || true
+
+      - name: Build engine (full, with client + ref_soft)
+        shell: bash
+        run: |
+          cd xash3d-fwgs-master
+          python3 ./waf configure -o build-full -T release -8
+          python3 ./waf build
+
+      - name: Run client-connect test and evaluate
+        shell: bash
+        run: bash glue/run_client_test.sh
+
       - name: Upload test logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -66,6 +87,8 @@ jobs:
           path: |
             out/host-test/console.txt
             out/host-test/engine.log
+            out/client-test/console.txt
+            out/client-test/engine.log
           if-no-files-found: warn
 
       - name: Telegram report
@@ -74,10 +97,18 @@ jobs:
         run: |
           [ -n "${{ secrets.TG_BOT_TOKEN }}" ] || exit 0
           ARCH=$(uname -m)
+          RES=""
           if [ -f out/host-test/console.txt ] && grep -q "Scrolling message" out/host-test/console.txt && ! grep -q "Crash: signal" out/host-test/console.txt; then
-            RES="✅ تست کامل arm64 ($ARCH) موفق — کل زنجیره موتور → متامد → AMX Mod X → ماژول‌ها → پلاگین‌ها بدون کرش اجرا شد (amx_scrollmsg هم پاس شد)"
+            RES="✅ تست سرور arm64 ($ARCH) موفق"
           else
-            RES="❌ تست arm64 ($ARCH) شکست — لاگ‌ها در آرتیفکت‌های اکشن"
+            RES="❌ تست سرور arm64 ($ARCH) شکست"
+          fi
+          if [ -f out/client-test/console.txt ] && grep -q "became an admin" out/client-test/console.txt && ! grep -q "Crash: signal" out/client-test/console.txt; then
+            RES="$RES
+✅ تست اتصال کلاینت arm64 ($ARCH) موفق — کلاینت به سرور لوکال وصل شد، get_user_authid (مسیر کرش v16) کار می‌کند"
+          else
+            RES="$RES
+❌ تست اتصال کلاینت arm64 ($ARCH) شکست — لاگ‌ها در آرتیفکت‌های اکشن"
           fi
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TG_CHAT_ID }}" -d text="$RES" > /dev/null || true

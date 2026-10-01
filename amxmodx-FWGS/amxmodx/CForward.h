@@ -90,7 +90,7 @@ public:
 	CForward(const char *name, ForwardExecType et, int numParams, const ForwardParam * paramTypes);
 	CForward() {}		// leaves everything unitialized'
 	
-	cell execute(cell *params, ForwardPreparedArray *preparedArrays);
+	cell execute(cell *params, ForwardPreparedArray *preparedArrays, void **hostParams = nullptr);
 	
 	int getParamsNum() const
 	{
@@ -138,7 +138,7 @@ public:
 	void Set(const char *funcName, AMX *amx, int numParams, const ForwardParam * paramTypes);
 	void Set(int func, AMX *amx, int numParams, const ForwardParam * paramTypes);
 
-	cell execute(cell *params, ForwardPreparedArray *preparedArrays);
+	cell execute(cell *params, ForwardPreparedArray *preparedArrays, void **hostParams = nullptr);
 	
 	int getParamsNum() const
 	{
@@ -196,7 +196,7 @@ public:
 	int isSameSPForward(int id1, int id2);
 	
 	// execute forward
-	cell executeForwards(int id, cell *params);
+	cell executeForwards(int id, cell *params, void **hostParams = nullptr);
 	void clear();							// delete all forwards
 	
 	bool isIdValid(int id) const;			// check whether forward id is valid

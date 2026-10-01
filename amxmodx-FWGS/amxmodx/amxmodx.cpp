@@ -4199,6 +4199,7 @@ static cell AMX_NATIVE_CALL ExecuteForward(AMX *amx, cell *params)
 	};
 
 	cell ps[FORWARD_MAX_PARAMS];
+	void *hps[FORWARD_MAX_PARAMS];
 	allot_info allots[FORWARD_MAX_PARAMS];
 	cell count = params[0] / sizeof(cell);
 	if (count - 2 != g_forwards.getParamsNum(id))
@@ -4211,6 +4212,7 @@ static cell AMX_NATIVE_CALL ExecuteForward(AMX *amx, cell *params)
 
 	for (cell i=3; i<=count; i++)
 	{
+		hps[i-3] = NULL;
 		param_type = g_forwards.getParamType(id, i-3);
 		if (param_type == FP_STRING)
 		{
@@ -4222,11 +4224,13 @@ static cell AMX_NATIVE_CALL ExecuteForward(AMX *amx, cell *params)
 				return 0;
 			}
 			strcpy((char *)allots[i-3].phys_addr, tmp);
+			hps[i-3] = allots[i-3].phys_addr;
 			ps[i-3] = (cell)(uintptr_t)allots[i-3].phys_addr;
 		}
 		else if (param_type == FP_CELL_BYREF)
 		{
 			cell *temp = get_amxaddr(amx, params[i]);
+			hps[i-3] = temp;
 			ps[i-3] = (cell)(uintptr_t)(temp);
 		}
 		else
@@ -4235,7 +4239,7 @@ static cell AMX_NATIVE_CALL ExecuteForward(AMX *amx, cell *params)
 		}
 	}
 
-	*addr = g_forwards.executeForwards(id, ps);
+	*addr = g_forwards.executeForwards(id, ps, hps);
 
 	for (cell i=3; i<=count; i++)
 	{

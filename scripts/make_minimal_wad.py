@@ -1,23 +1,41 @@
 #!/usr/bin/env python3
-"""Generate a minimal valid WAD3 file (gfx.wad stand-in for the CI test)."""
-import struct, sys
+"""Generate a minimal valid WAD3 file (gfx.wad / decals.wad stand-in for the CI test).
 
-def miptex(name, w, h):
-    m1 = bytes([0x20]) * (w * h)
-    m2 = bytes([0x20]) * ((w // 2) * (h // 2))
-    m3 = bytes([0x20]) * 4
-    m4 = bytes([0x20])
-    pal = bytes([0x80, 0x80, 0x80]) * 256
-    return struct.pack('<16sII4I', name.encode(), w, h, 40,
-                       40 + len(m1), 40 + len(m1) + len(m2),
-                       40 + len(m1) + len(m2) + len(m3)) + m1 + m2 + m3 + m4 + pal
+Every lump is a fully valid WAD3 miptex: name[16] + w + h + offsets[4] +
+mip0..mip3 + short(256) + 768-byte palette — the layout the engine's
+Image_LoadMIP expects.
+
+NOTE (v17): this FWGS master does NOT mount .wad files as search paths, so
+the console/HUD font must exist as a real file. When 'conchars' is requested
+and the output is gfx.wad, a standalone valve/gfx/conchars.mip (128x128
+valid miptex) is written next to the wad — that is what
+Con_LoadFixedWidthFont("gfx/conchars") actually resolves.
+"""
+import struct, sys, os
+
+def miptex(name, w, h, fill=0xFF, pal255=(0, 0, 0)):
+    m0 = bytes([fill]) * (w * h)
+    m1 = bytes([fill]) * ((w // 2) * (h // 2))
+    m2 = bytes([fill]) * ((w // 4) * (h // 4))
+    m3 = bytes([fill]) * ((w // 8) * (h // 8))
+    header_len = 40
+    off0 = header_len
+    off1 = off0 + len(m0)
+    off2 = off1 + len(m1)
+    off3 = off2 + len(m2)
+    header = struct.pack('<16sII4I', name.encode()[:15] + b'\0', w, h,
+                         off0, off1, off2, off3)
+    palette = bytes([0x80, 0x80, 0x80]) * 255 + bytes(pal255)
+    return header + m0 + m1 + m2 + m3 + struct.pack('<H', 256) + palette
 
 def build_wad3(names):
     lumps = []
     for n in names:
         if n == 'conchars':
-            # raw 128x128 console charset, no header (xash oldstyle font)
-            lumps.append((n, bytes([0x20]) * 16384))
+            lumps.append((n, miptex(n, 128, 128, fill=0xFF)))
+        elif n.startswith('{'):
+            # masked decals: blue last palette entry = classic decal base
+            lumps.append((n, miptex(n, 8, 8, fill=0xFF, pal255=(0, 0, 255))))
         else:
             lumps.append((n, miptex(n, 8, 8)))
     body = b''
@@ -35,3 +53,12 @@ if __name__ == '__main__':
     names = sys.argv[2:] or ['{CONS24', 'CONBACK', 'LAMBDA']
     open(out, 'wb').write(build_wad3(names))
     print('wrote %s' % out)
+    # standalone font file: the engine loads "gfx/conchars" from a real
+    # file (wads are not mounted as filesystems in FWGS master)
+    if 'conchars' in names:
+        conchars = miptex('conchars', 128, 128, fill=0xFF)
+        gdir = os.path.join(os.path.dirname(out), 'gfx')
+        os.makedirs(gdir, exist_ok=True)
+        cpath = os.path.join(gdir, 'conchars.mip')
+        open(cpath, 'wb').write(conchars)
+        print('wrote %s' % cpath)

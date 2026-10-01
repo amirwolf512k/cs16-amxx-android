@@ -37,7 +37,17 @@ CForward::CForward(const char *name, ForwardExecType et, int numParams, const Fo
 	m_Name = name;
 }
 
-cell CForward::execute(cell *params, ForwardPreparedArray *preparedArrays)
+// LP64 helper: forward parameters whose logical type is a host pointer
+// (FP_STRING / FP_STRINGEX / by-ref / prepared arrays) can not be carried
+// inside a 32-bit pawn cell on 64-bit hosts. The full 64-bit value travels
+// in a parallel array; this helper picks it when available and falls back
+// to the (truncated) cell for legacy callers.
+static inline void *fwd_host_ptr(void **hostParams, int i, cell fallback)
+{
+	return hostParams ? hostParams[i] : reinterpret_cast<void *>(static_cast<uintptr_t>(fallback));
+}
+
+cell CForward::execute(cell *params, ForwardPreparedArray *preparedArrays, void **hostParams)
 {
 	cell realParams[FORWARD_MAX_PARAMS];
 	cell *physAddrs[FORWARD_MAX_PARAMS];
@@ -66,7 +76,7 @@ cell CForward::execute(cell *params, ForwardPreparedArray *preparedArrays)
 			{
 				if (m_ParamTypes[i] == FP_STRING || m_ParamTypes[i] == FP_STRINGEX)
 				{
-					const char *str = reinterpret_cast<const char*>(params[i]);
+					const char *str = static_cast<const char *>(fwd_host_ptr(hostParams, i, params[i]));
 					cell *tmp;
 					if (!str)
 						str = "";
@@ -98,11 +108,11 @@ cell CForward::execute(cell *params, ForwardPreparedArray *preparedArrays)
 
 					if (m_ParamTypes[i] == FP_CELL_BYREF)
 					{
-						memcpy(tmp, reinterpret_cast<cell *>(params[i]), sizeof(cell));
+						memcpy(tmp, static_cast<cell *>(fwd_host_ptr(hostParams, i, params[i])), sizeof(cell));
 					}
 					else
 					{
-						memcpy(tmp, reinterpret_cast<REAL *>(params[i]), sizeof(REAL));
+						memcpy(tmp, static_cast<REAL *>(fwd_host_ptr(hostParams, i, params[i])), sizeof(REAL));
 					}
 				}
 				else
@@ -154,7 +164,7 @@ cell CForward::execute(cell *params, ForwardPreparedArray *preparedArrays)
 				else if (m_ParamTypes[i] == FP_STRINGEX)
 				{
 					// copy back
-					amx_GetStringOld(reinterpret_cast<char*>(params[i]), physAddrs[i], 0);
+					amx_GetStringOld(static_cast<char *>(fwd_host_ptr(hostParams, i, params[i])), physAddrs[i], 0);
 					amx_Release(amx, realParams[i]);
 				}
 				else if (m_ParamTypes[i] == FP_ARRAY)
@@ -181,11 +191,11 @@ cell CForward::execute(cell *params, ForwardPreparedArray *preparedArrays)
 					cell *tmp = physAddrs[i];
 					if (m_ParamTypes[i] == FP_CELL_BYREF)
 					{
-						memcpy(reinterpret_cast<cell *>(params[i]), tmp, sizeof(cell));
+						memcpy(static_cast<cell *>(fwd_host_ptr(hostParams, i, params[i])), tmp, sizeof(cell));
 					}
 					else
 					{
-						memcpy(reinterpret_cast<REAL *>(params[i]), tmp, sizeof(REAL));
+						memcpy(static_cast<REAL *>(fwd_host_ptr(hostParams, i, params[i])), tmp, sizeof(REAL));
 					}
 					amx_Release(amx, realParams[i]);
 				}
@@ -244,7 +254,7 @@ void CSPForward::Set(const char *funcName, AMX *amx, int numParams, const Forwar
 	m_InExec = false;
 }
 
-cell CSPForward::execute(cell *params, ForwardPreparedArray *preparedArrays)
+cell CSPForward::execute(cell *params, ForwardPreparedArray *preparedArrays, void **hostParams)
 {
 	if (isFree)
 		return 0;
@@ -274,7 +284,7 @@ cell CSPForward::execute(cell *params, ForwardPreparedArray *preparedArrays)
 	{
 		if (m_ParamTypes[i] == FP_STRING || m_ParamTypes[i] == FP_STRINGEX)
 		{
-			const char *str = reinterpret_cast<const char*>(params[i]);
+			const char *str = static_cast<const char *>(fwd_host_ptr(hostParams, i, params[i]));
 			if (!str)
 				str = "";
 			cell *tmp;
@@ -306,11 +316,11 @@ cell CSPForward::execute(cell *params, ForwardPreparedArray *preparedArrays)
 
 			if (m_ParamTypes[i] == FP_CELL_BYREF)
 			{
-				memcpy(tmp, reinterpret_cast<cell *>(params[i]), sizeof(cell));
+				memcpy(tmp, static_cast<cell *>(fwd_host_ptr(hostParams, i, params[i])), sizeof(cell));
 			}
 			else
 			{
-				memcpy(tmp, reinterpret_cast<REAL *>(params[i]), sizeof(REAL));
+				memcpy(tmp, static_cast<REAL *>(fwd_host_ptr(hostParams, i, params[i])), sizeof(REAL));
 			}
 		}
 		else
@@ -358,7 +368,7 @@ cell CSPForward::execute(cell *params, ForwardPreparedArray *preparedArrays)
 		else if (m_ParamTypes[i] == FP_STRINGEX)
 		{
 			// copy back
-			amx_GetStringOld(reinterpret_cast<char*>(params[i]), physAddrs[i], 0);
+			amx_GetStringOld(static_cast<char *>(fwd_host_ptr(hostParams, i, params[i])), physAddrs[i], 0);
 			amx_Release(m_Amx, realParams[i]);
 		}
 		else if (m_ParamTypes[i] == FP_ARRAY)
@@ -385,11 +395,11 @@ cell CSPForward::execute(cell *params, ForwardPreparedArray *preparedArrays)
 			cell *tmp = physAddrs[i];
 			if (m_ParamTypes[i] == FP_CELL_BYREF)
 			{
-				memcpy(reinterpret_cast<cell *>(params[i]), tmp, sizeof(cell));
+				memcpy(static_cast<cell *>(fwd_host_ptr(hostParams, i, params[i])), tmp, sizeof(cell));
 			}
 			else
 			{
-				memcpy(reinterpret_cast<REAL *>(params[i]), tmp, sizeof(REAL));
+				memcpy(static_cast<REAL *>(fwd_host_ptr(hostParams, i, params[i])), tmp, sizeof(REAL));
 			}
 			amx_Release(m_Amx, realParams[i]);
 		}
@@ -491,20 +501,20 @@ bool CForwardMngr::isIdValid(int id) const
 	return (id >= 0) && ((id & 1) ? (static_cast<size_t>(id >> 1) < m_SPForwards.length()) : (static_cast<size_t>(id >> 1) < m_Forwards.length()));
 }
 
-cell CForwardMngr::executeForwards(int id, cell *params)
+cell CForwardMngr::executeForwards(int id, cell *params, void **hostParams)
 {
 	int retVal;
 	if (id & 1)
 	{
 		CSPForward *fwd = m_SPForwards[id >> 1];
-		retVal = fwd->execute(params, m_TmpArrays);
+		retVal = fwd->execute(params, m_TmpArrays, hostParams);
 		if (fwd->m_ToDelete)
 		{
 			fwd->m_ToDelete = false;
 			unregisterSPForward(id);
 		}
 	} else {
-		retVal = m_Forwards[id >> 1]->execute(params, m_TmpArrays);
+		retVal = m_Forwards[id >> 1]->execute(params, m_TmpArrays, hostParams);
 	}
 
 	m_TmpArraysNum = 0;
@@ -740,6 +750,9 @@ cell executeForwards(int id, ...)
 		return -1;
 
 	cell params[FORWARD_MAX_PARAMS];
+	// LP64: keep the full 64-bit values of pointer-typed arguments here;
+	// the 32-bit pawn cells can not hold them.
+	void *hostParams[FORWARD_MAX_PARAMS];
 	
 	int paramsNum = g_forwards.getParamsNum(id);
 	
@@ -750,6 +763,7 @@ cell executeForwards(int id, ...)
 	
 	for (int i = 0; i < paramsNum && i < FORWARD_MAX_PARAMS; ++i)
 	{
+		hostParams[i] = NULL;
 		param_type = g_forwards.getParamType(id, i);
 		if (param_type == FP_FLOAT)
 		{
@@ -759,20 +773,29 @@ cell executeForwards(int id, ...)
 		else if(param_type == FP_FLOAT_BYREF)
 		{
 			REAL *tmp = reinterpret_cast<REAL *>(va_arg(argptr, double*));
+			hostParams[i] = tmp;
 			params[i] = (cell)(uintptr_t)(tmp);
 		}
 		else if(param_type == FP_CELL_BYREF)
 		{
 			cell *tmp = reinterpret_cast<cell *>(va_arg(argptr, cell*));
+			hostParams[i] = tmp;
 			params[i] = (cell)(uintptr_t)(tmp);
 		}
 		else
-			params[i] = (cell)(size_t)va_arg(argptr, cell);
+		{
+			// FP_CELL / FP_STRING / FP_STRINGEX / FP_ARRAY.
+			// Extract through a 64-bit slot: pointer arguments keep their
+			// full value; integer arguments only need the low 32 bits.
+			void *pv = va_arg(argptr, void *);
+			hostParams[i] = (param_type == FP_CELL) ? NULL : pv;
+			params[i] = (cell)(uintptr_t)(pv);
+		}
 	}
 	
 	va_end(argptr);
 	
-	return g_forwards.executeForwards(id, params);
+	return g_forwards.executeForwards(id, params, hostParams);
 }
 
 cell CForwardMngr::prepareArray(void *ptr, unsigned int size, ForwardArrayElemType type, bool copyBack)

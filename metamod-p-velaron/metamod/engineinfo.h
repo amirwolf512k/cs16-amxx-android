@@ -179,6 +179,16 @@ inline const char* EngineInfo::type( void )
 
 inline bool EngineInfo::is_valid_code_pointer( void* _pMem )
 {
+#if 1
+	// Xash3D FWGS: the engine module is libxash.so, which the
+	// engine_<arch>.so name check in check_for_engine_module() rejects.
+	// EngineInfo then stays in STATE_NULL and every signature function
+	// below was treated as "invalid" and nulled out (pfnGetPlayerAuthId,
+	// pfnQueryClientCvarValue*, ...), crashing AMXX on the first client
+	// connect. Accept the engine's pointers unconditionally, like the
+	// FWGS metamod fork does.
+	return true;
+#else
 	if ( STATE_INVALID == m_state ) {
 		return c_DefaultReturnOnInvalidState;
 	}
@@ -187,6 +197,7 @@ inline bool EngineInfo::is_valid_code_pointer( void* _pMem )
 	}
 
 	return false;
+#endif
 }
 
 inline bool EngineInfo::is_valid_code_pointer( const char* (*_fp) (edict_t*) )
