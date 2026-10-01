@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
 
         // bump this when assets/addons.zip is updated so the bundle
         // gets re-extracted into the game directory
-        private static final String ADDONS_VERSION = "amxx-v9-corefix";
+        private static final String ADDONS_VERSION = "amxx-v12-repo";
 
         private boolean mPermissionAsked = false;
 
@@ -190,6 +190,11 @@ public class MainActivity extends Activity {
                 // (Xash3D FWGS (AMXX)) at valve game launch since v9.
                 extractZipIfNeeded( "addons.zip", "addons_version",
                         "cstrike/addons/metamod/dlls/libmetamod_android_arm64.so" );
+
+                // v12: keep plugins.ini in sync with this app's nativeLibraryDir
+                // (YaPB as metamod plugin) — must run on every launch in case the
+                // engine/game ABI layout changed, and it is cheap anyway.
+                patchPluginsIni();
         }
 
         private void extractZipIfNeeded( String assetName, String prefKey,
@@ -249,6 +254,59 @@ public class MainActivity extends Activity {
                         + " files -> " + dest.getAbsolutePath() );
                 Toast.makeText( this, "افزونه‌های AMX Mod X نصب شد (" + assetName + ": "
                         + count + " فایل)", Toast.LENGTH_SHORT ).show();
+        }
+
+        /**
+         * v12: rewrite metamod plugins.ini after the addons extraction.
+         *
+         * - The AMX Mod X core plugin keeps its relative path (it lives inside
+         *   the extracted addons tree).
+         * - YaPB is loaded as a METAMOD PLUGIN now (v12 removed -dll @yapb:
+         *   the yapb wrapper does not re-export entity spawn symbols, so the
+         *   engine failed every map entity with "No spawn function"). YaPB
+         *   needs an absolute path to its library inside this app's
+         *   nativeLibraryDir, which is only known at runtime — so we write it
+         *   here, right after the extraction.
+         */
+        private void patchPluginsIni() {
+                try {
+                        File ini = new File( getXashDir(), "cstrike/addons/metamod/plugins.ini" );
+                        File dir = ini.getParentFile();
+                        if( dir == null )
+                                return;
+                        dir.mkdirs();
+
+                        StringBuilder sb = new StringBuilder();
+                        sb.append( ";;;\n" );
+                        sb.append( "; Metamod plugin list for Android (xash3d-fwgs)\n" );
+                        sb.append( "; AMX Mod X core:\n" );
+                        sb.append( ";;;\n" );
+                        sb.append( "linux addons/amxmodx/dlls/libmm_amxmodx.so\n" );
+
+                        // YaPB bot plugin (absolute path, ABI-dependent)
+                        String nativeDir = getApplicationInfo().nativeLibraryDir;
+                        String[] abis = android.os.Build.SUPPORTED_ABIS;
+                        String yapbName = null;
+                        if( abis != null && abis.length > 0 && abis[0].contains( "arm64" ) )
+                                yapbName = "libyapb_android_arm64.so";
+                        else if( abis != null && abis.length > 0 )
+                                yapbName = "libyapb_android_armv7l.so";
+
+                        if( yapbName != null && nativeDir != null ) {
+                                File yapb = new File( nativeDir, yapbName );
+                                if( yapb.isFile() ) {
+                                        sb.append( ";\n; YaPB bot (as metamod plugin):\n" );
+                                        sb.append( "linux " ).append( yapb.getAbsolutePath() ).append( "\n" );
+                                }
+                        }
+
+                        java.io.PrintWriter pw = new java.io.PrintWriter( new java.io.FileWriter( ini, false ) );
+                        pw.print( sb.toString() );
+                        pw.close();
+                        Log.i( TAG, "plugins.ini patched: " + ini.getAbsolutePath() );
+                } catch( Throwable t ) {
+                        Log.w( TAG, "plugins.ini patch failed", t );
+                }
         }
 
         // ------------------------------------------------------------------

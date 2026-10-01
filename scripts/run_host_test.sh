@@ -13,12 +13,14 @@ mkdir -p "$TEST/valve"
 
 # ---- content: valve gamedir ----
 cp -r "$ROOT/stage/valve/addons" "$TEST/valve/addons"
+# the committed stage tree has no dlls/modules dirs (libs are added here)
+mkdir -p "$TEST/valve/addons/amxmodx/dlls" "$TEST/valve/addons/amxmodx/modules"
 cp "$OUT/libmm_amxmodx.so" "$TEST/valve/addons/amxmodx/dlls/"
 cp "$OUT"/modules/libamxx_*.so "$TEST/valve/addons/amxmodx/modules/"
 mkdir -p "$TEST/valve/addons/metamod/dlls"
 # engine's Q_buildarch may report amd64/arm64 depending on the host — provide all names
 for n in amd64 x86_64 arm64 aarch64; do
-	cp "$OUT/libmetamod_android_$ARCH.so" "$TEST/valve/addons/metamod/dlls/libmetamod_android_$n.so"
+        cp "$OUT/libmetamod_android_$ARCH.so" "$TEST/valve/addons/metamod/dlls/libmetamod_android_$n.so"
 done
 
 # host test: cstrike/csx/fakemeta modules reference ReGameDLL API symbols
@@ -38,7 +40,7 @@ python3 "$ROOT/scripts/make_delta_lst.py" "$ENGINE/engine/common/net_encode.c" "
 # (plugin_srvcmd -> executeForwards -> amx_Exec -> amx_Callback -> set_task)
 # the AMXX core execs amxx.cfg itself after plugins load — same as the phone flow
 printf 'amx_scrollmsg "AMXX arm64 CI test message" 10\namx_scrollmsg "second message" 12\n' \
-	> "$TEST/valve/addons/amxmodx/configs/amxx.cfg"
+        > "$TEST/valve/addons/amxmodx/configs/amxx.cfg"
 
 # gamedll (libhl built by waf) + liblist.gam
 GAMELIB=$(find "$ENGINE/3rdparty/hlsdk-portable/build" -name "hl_*.so" | head -1)
@@ -49,7 +51,7 @@ cp "$GAMELIB" "$TEST/"
 # metamod autodetects the real gamedll from the gamedir (dlls/<name>.so)
 mkdir -p "$TEST/valve/dlls"
 for n in hl_amd64.so hl_i386.so hl_arm64.so libserver.so; do
-	cp "$GAMELIB" "$TEST/valve/dlls/$n"
+        cp "$GAMELIB" "$TEST/valve/dlls/$n"
 done
 cat > "$TEST/valve/liblist.gam" <<'EOF'
 game "Half-Life"

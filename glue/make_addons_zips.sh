@@ -42,8 +42,19 @@ cp -r "$STAGE/valve"   "$OUT/stage-valve"
 install_libs "$OUT/stage-cstrike"
 install_libs "$OUT/stage-valve"
 
-(cd "$OUT/stage-cstrike" && zip -qr9 "$OUT/cstrike-addons.zip" addons)
-(cd "$OUT/stage-valve"   && zip -qr9 "$OUT/valve-addons.zip" addons)
+# v12 fix: the zips must carry the GAME DIRECTORY PREFIX. Both installers
+# extract into <xash>/ root:
+#   cs16client MainActivity  -> expects "cstrike/..." entries
+#   engine ValveAddonsInstaller -> expects "valve/..." entries
+# Without the prefix everything landed in <xash>/addons (root) — CS addons
+# outside cstrike/ and valve addons never reaching valve/.
+mkdir -p "$OUT/stage-cstrike/cstrike"
+mv "$OUT/stage-cstrike/addons" "$OUT/stage-cstrike/cstrike/addons"
+mkdir -p "$OUT/stage-valve/valve"
+mv "$OUT/stage-valve/addons" "$OUT/stage-valve/valve/addons"
+
+(cd "$OUT/stage-cstrike" && zip -qr9 "$OUT/cstrike-addons.zip" cstrike)
+(cd "$OUT/stage-valve"   && zip -qr9 "$OUT/valve-addons.zip" valve)
 
 # gameinfo.txt for valve (engine uses -dll @hl)
 ls -la "$OUT"/*.zip

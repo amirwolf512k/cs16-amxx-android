@@ -81,9 +81,16 @@ class Game(val ctx: Context, val basedir: File, val gameInfoFile: File) {
                         if (packageNames.contains("su.xash.engine")) {
                                 commandLineArgs += "-dll @hl "
                         } else if (packageNames.any { it.startsWith("su.xash.cs16client") }) {
-                                if (pref.getBoolean("enable_yapb_bots", false)) {
-                                        commandLineArgs += "-dll @yapb "
-                                }
+                                // v12: do NOT pass "-dll @yapb" when AMX Mod X is active.
+                                // The engine resolves entity spawn functions with
+                                // dlsym(svgame.hInstance, "worldspawn"), but the chain
+                                // metamod -> yapb-wrapper breaks that: the wrapper does
+                                // not re-export the entity symbols, so every map entity
+                                // failed with "No spawn function". YaPB is now loaded as
+                                // a metamod plugin instead (plugins.ini, patched by the
+                                // cs16client installer with the absolute lib path), and
+                                // metamod chains directly to libcs (which exports the
+                                // entity symbols).
                                 externalGame = true
                         }
                 }

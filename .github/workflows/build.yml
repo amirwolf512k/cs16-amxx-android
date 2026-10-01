@@ -43,6 +43,49 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > xash3d-fwgs-master/android/local.properties
           echo "sdk.dir=$ANDROID_HOME" > cs16-client-main/android/local.properties
 
+      - name: Build hlsdk-portable + mainui for Android (valve game support)
+        shell: bash
+        run: |
+          set -e
+          # hlsdk-portable is gitignored inside the engine source and the
+          # gradle-internal cmake flow fails silently, so build it here with
+          # visible output: libhl_android_*.so + libclient_android_*.so
+          git clone --depth 1 -b mobile_hacks --recursive --shallow-submodules \
+            https://github.com/FWGS/hlsdk-portable \
+            xash3d-fwgs-master/3rdparty/hlsdk-portable
+
+          TC="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+          JNILIBS="$PWD/xash3d-fwgs-master/android/app/src/main/jniLibs"
+
+          # ---- hlsdk-portable: HL server (libhl) + client (libclient) ----
+          for ABI in arm64-v8a armeabi-v7a; do
+            EXTRA=""
+            if [ "$ABI" = "arm64-v8a" ]; then EXTRA="-D64BIT=ON"; fi
+            cmake -S xash3d-fwgs-master/3rdparty/hlsdk-portable -B build/hlsdk-$ABI \
+              -DCMAKE_TOOLCHAIN_FILE="$TC" \
+              -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-21 -DANDROID_NDK="$ANDROID_NDK_HOME" \
+              -DCMAKE_SYSTEM_NAME=Android -DCMAKE_SYSTEM_VERSION=21 \
+              -DCMAKE_BUILD_TYPE=Release -DANDROID_APK=ON $EXTRA
+            cmake --build build/hlsdk-$ABI -j"$(nproc)"
+            cmake --install build/hlsdk-$ABI --prefix "$JNILIBS/$ABI"
+          done
+
+          # ---- mainui_cpp: game menu (libmenu.so, engine-suffixed neutral name) ----
+          for ABI in arm64-v8a armeabi-v7a; do
+            cmake -S cs16-client-main/3rdparty/mainui_cpp -B build/mainui-$ABI \
+              -DCMAKE_TOOLCHAIN_FILE="$TC" \
+              -DANDROID_ABI=$ABI -DANDROID_PLATFORM=android-21 -DANDROID_NDK="$ANDROID_NDK_HOME" \
+              -DCMAKE_SYSTEM_NAME=Android -DCMAKE_SYSTEM_VERSION=21 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DBUILD_AS_PART_OF_ENGINE=ON \
+              -DXASH_SDK="$PWD/xash3d-fwgs-master/3rdparty/hlsdk-portable"
+            cmake --build build/mainui-$ABI -j"$(nproc)"
+            cmake --install build/mainui-$ABI --prefix "$JNILIBS/$ABI"
+          done
+
+          echo "---- engine jniLibs ----"
+          ls -la "$JNILIBS"/arm64-v8a "$JNILIBS"/armeabi-v7a
+
       - name: Build native (amxmodx + metamod + amxxpc) and stage assets
         shell: bash
         run: |
