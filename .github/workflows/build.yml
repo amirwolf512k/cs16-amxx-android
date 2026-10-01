@@ -71,13 +71,15 @@ jobs:
           done
 
           # ---- mainui_cpp: game menu (libmenu.so, engine-suffixed neutral name) ----
-          # The CMakeLists references ${CMAKE_SOURCE_DIR}/common/interface.cpp —
-          # it is designed to be add_subdirectory'ed from the game root; provide
-          # the file for standalone builds. Headers come from the bundled
-          # sdk_includes/ (do NOT point XASH_SDK at hlsdk: it lacks menu_int.h).
+          # The CMakeLists references ${CMAKE_SOURCE_DIR}/common/interface.cpp and
+          # ${CMAKE_SOURCE_DIR}/public (cl_dll exports) — it is designed to be
+          # add_subdirectory'ed from the game root; provide both for standalone
+          # builds. XASH SDK headers come from the bundled sdk_includes/
+          # (do NOT point XASH_SDK at hlsdk: it lacks menu_int.h).
           mkdir -p cs16-client-main/3rdparty/mainui_cpp/common
           cp cs16-client-main/common/interface.cpp cs16-client-main/3rdparty/mainui_cpp/common/
           cp cs16-client-main/common/interface.h   cs16-client-main/3rdparty/mainui_cpp/common/
+          cp -r cs16-client-main/public            cs16-client-main/3rdparty/mainui_cpp/public
           for ABI in arm64-v8a armeabi-v7a; do
             cmake -S cs16-client-main/3rdparty/mainui_cpp -B build/mainui-$ABI \
               -DCMAKE_TOOLCHAIN_FILE="$TC" \
