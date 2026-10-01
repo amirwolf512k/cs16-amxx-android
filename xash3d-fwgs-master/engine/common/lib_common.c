@@ -454,6 +454,11 @@ static qboolean COM_AMXX_Setup( char *out, size_t size, const char *realdll )
                 if( g_fsapi.FileExists( testpath, false ))
                 {
                         g_fsapi.GetFullDiskPath( out, size, testpath, false );
+
+                        // v13: mark the amxx chain as active so SV_InitGame can
+                        // fall back to the original gamedll if this load fails
+                        setenv( "XASH3D_AMXX_TRIED", "1", 1 );
+
                         return true;
                 }
 
@@ -497,6 +502,10 @@ static qboolean COM_AMXX_Setup( char *out, size_t size, const char *realdll )
 
                         setenv( "MM_GAMELIBDIR", va( "%s/addons/amxmodx/modules", privroot ), 1 );
                         setenv( "MM_ADDONS_ROOT", va( "%s/addons", privroot ), 1 );
+
+                        // v13: mark the amxx chain as active so SV_InitGame can
+                        // fall back to the original gamedll if this load fails
+                        setenv( "XASH3D_AMXX_TRIED", "1", 1 );
 
                         Con_Reportf( "%s: AMX Mod X support enabled, metamod at %s, gamedll %s\n",
                                 __func__, testpath, gamedll_set ? gamelib : "<autodetect>" );

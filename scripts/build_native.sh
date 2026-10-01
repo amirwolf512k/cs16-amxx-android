@@ -59,6 +59,16 @@ for abi in arm64-v8a armeabi-v7a; do
         cp "$SRC_PC" "$ENGINE/jniLibs/$abi/libamxxpc.so"
 done
 
+# ---- v13: bundle metamod + amxmodx core into the engine APK as well.
+# ---- Valve mode runs entirely inside the engine app; the library loader's
+# ---- tiers and metamod's own DLOPEN fallback both look in XASH3D_GAMELIBDIR
+# ---- (= this app's nativeLibraryDir), so the binaries must be present there
+# ---- even though the private-dir copy normally wins.
+cp glue/out/metamod/libmetamod_android_arm64.so  "$ENGINE/jniLibs/arm64-v8a/"
+cp glue/out/metamod/libmetamod_android_armv7a.so "$ENGINE/jniLibs/armeabi-v7a/"
+cp glue/out/amxx/libs/arm64-v8a/libmm_amxmodx.so      "$ENGINE/jniLibs/arm64-v8a/"
+cp glue/out/amxx/libs/armeabi-v7a/libmm_amxmodx.so    "$ENGINE/jniLibs/armeabi-v7a/"
+
 # ---- engine assets: valve addons zip
 mkdir -p "$ENGINE/assets"
 cp out/valve-addons.zip "$ENGINE/assets/valve-addons.zip"
