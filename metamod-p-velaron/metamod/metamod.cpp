@@ -178,8 +178,15 @@ int DLLINTERNAL metamod_startup(void) {
         else if((cp=getenv("MM_GAMEDLL")) && *cp != '\0') {
                 // The xash3d-fwgs engine passes the server library it would load
                 // normally (e.g. the YaPB proxy dll) through this environment var.
-                META_LOG("Gamedll specified via MM_GAMEDLL environment: %s", cp);
-                Config->set("gamedll", cp);
+                // v14: never accept metamod itself -- older setups pointed the
+                // gameinfo gamedll entry back at metamod, which made us chain
+                // into ourselves and recurse until the stack overflowed.
+                if(!strstr(cp, "libmetamod")) {
+                        META_LOG("Gamedll specified via MM_GAMEDLL environment: %s", cp);
+                        Config->set("gamedll", cp);
+                } else {
+                        META_LOG("MM_GAMEDLL points at metamod itself, ignoring: %s", cp);
+                }
         }
 #endif
         if((cp=LOCALINFO("mm_pluginsfile")) && *cp != '\0') {

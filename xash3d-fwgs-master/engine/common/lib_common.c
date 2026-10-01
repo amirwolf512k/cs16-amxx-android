@@ -480,7 +480,12 @@ static qboolean COM_AMXX_Setup( char *out, size_t size, const char *realdll )
                         qboolean gamedll_set = false;
 
                         // pass the original server library to metamod
-                        if( !COM_StringEmptyOrNULL( realdll ))
+                        // v14: never hand metamod itself over as the gamedll --
+                        // gameinfo.txt entries left by the old manual install
+                        // instructions could point realdll back at metamod,
+                        // which makes metamod chain into itself and recurse
+                        // until the stack overflows
+                        if( !COM_StringEmptyOrNULL( realdll ) && !Q_stristr( realdll, "metamod" ))
                         {
                                 if( !COM_StringEmptyOrNULL( gamelibdir ))
                                 {
