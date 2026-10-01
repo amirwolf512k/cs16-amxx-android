@@ -92,7 +92,7 @@ MMFLAGS="-O2 -g -fPIC -std=gnu++98 -fpermissive -fno-exceptions -fno-rtti -w -D_
 MMOBJS=""
 for s in api_hook api_info commands_meta conf_meta dllapi engine_api engineinfo game_support game_autodetect \
         h_export linkgame linkplug log_meta meta_eiface metamod mlist mplayer mplugin mqueue mreg mutil osdep \
-        osdep_p reg_support sdk_util studioapi support_meta thread_logparse vdate osdep_linkent_linux \
+        osdep_p reg_support sdk_util studioapi support_meta thread_logparse vdate osdep_linkent_xash \
         osdep_detect_gamedll_linux; do
         $CXX $MMFLAGS -c -o "$OUT/obj_mm/$s.o" "$MMSRC/$s.cpp"
         MMOBJS="$MMOBJS $OUT/obj_mm/$s.o"
