@@ -27,46 +27,95 @@
 
 #include <dlfcn.h>
 
-#include "extdll.h"			// always
-#include "h_export.h"		// me / export macros
-#include "metamod.h"		// GameDLL, etc
-#include "log_meta.h"		// META_LOG / META_WARNING
-#include "osdep_p.h"		// platform helpers
+#include "extdll.h"                     // always
+#include "h_export.h"           // me / export macros
+#include "metamod.h"            // GameDLL, etc
+#include "log_meta.h"           // META_LOG / META_WARNING
+#include "osdep_p.h"            // platform helpers
 
 // Opaque pass-through signatures (the real implementations validate the
 // version and fill the structures; we never touch the contents ourselves).
 typedef int (*PHYSICAPI_PASS)(int version, void *physics_api, void *table);
 typedef int (*BLENDIFACE_PASS)(int version, void **ppinterface, void *pstudio,
-				float *rotationmatrix, float *bonetransform);
+                                float *rotationmatrix, float *bonetransform);
 
 static void *gamedll_resolve(const char *name) {
-	if(!GameDLL.handle) {
-		META_WARNING("dll: game DLL not loaded yet; cannot resolve '%s'", name);
-		return(NULL);
-	}
-	return(dlsym(GameDLL.handle, name));
+        if(!GameDLL.handle) {
+                META_WARNING("dll: game DLL not loaded yet; cannot resolve '%s'", name);
+                return(NULL);
+        }
+        return(dlsym(GameDLL.handle, name));
 }
 
-// Xash3D custom physics interface (entity creation on the engine side).
+// ---------------------------------------------------------------------------
+// Xash3D custom physics interface.
+//
+// The ENGINE fills svgame.physFuncs from this export. The real game DLL
+// (hl / ReGameDLL) usually does NOT export Server_GetPhysicsInterface at
+// all, so blindly forwarding the call is useless: the engine would zero
+// physFuncs and every map entity would die with
+// "No spawn function for ...".
+//
+// Instead we provide our OWN SV_CreateEntity which dlsym's the per-classname
+// spawn export (worldspawn, info_player_start, ...) inside the game DLL —
+// exactly what metamod-fwgs' osdep_linkent_xash.cpp does, adapted for
+// metamod-P. All other physFuncs stay NULL (engine built-ins are used).
+// ---------------------------------------------------------------------------
+#ifndef SV_PHYSICS_INTERFACE_VERSION
+#define SV_PHYSICS_INTERFACE_VERSION 6
+#endif
+
+typedef void (*mm_linkentity_func)( entvars_t *pev );
+
+static int mm_DispatchCreateEntity( edict_t *pent, const char *szName ) {
+        mm_linkentity_func spawn;
+
+        if(!GameDLL.handle)
+                return(-1);
+
+        spawn = (mm_linkentity_func) dlsym(GameDLL.handle, szName);
+        if(!spawn)
+                return(-1);
+
+        spawn(&pent->v);
+        return(0);      // handled
+}
+
 extern "C" __attribute__((visibility("default")))
 int Server_GetPhysicsInterface(int version, void *physics_api, void *table) {
-	void *fn= gamedll_resolve("Server_GetPhysicsInterface");
+        // The engine's physics_interface_t starts with:
+        //   int  version;
+        //   int  (*SV_CreateEntity)(edict_t *, const char *);
+        // Everything after it may differ between engine builds, so only the
+        // first two fields are written here (the engine zeroes the rest).
+        struct { int version; int (*SV_CreateEntity)(edict_t *, const char *); } *iface
+                = (struct { int version; int (*SV_CreateEntity)(edict_t *, const char *); }) table;
 
-	if(!fn)
-		return(0);
+        (void) physics_api;
 
-	return(((PHYSICAPI_PASS) fn)(version, physics_api, table));
+        if(!iface || version != SV_PHYSICS_INTERFACE_VERSION)
+                return(0);
+
+        if(!GameDLL.handle) {
+                META_WARNING("dll: game DLL not loaded yet; cannot provide physics interface");
+                return(0);
+        }
+
+        iface->version = SV_PHYSICS_INTERFACE_VERSION;
+        iface->SV_CreateEntity = &mm_DispatchCreateEntity;
+        META_LOG("dll: provided Xash3D physics interface (SV_CreateEntity -> game dll exports)");
+        return(1);
 }
 
 // Xash3D/GoldSrc studio blending interface (server-side model animation).
 extern "C" __attribute__((visibility("default")))
 int Server_GetBlendingInterface(int version, void **ppinterface, void *pstudio,
-		float *rotationmatrix, float *bonetransform) {
-	void *fn= gamedll_resolve("Server_GetBlendingInterface");
+                float *rotationmatrix, float *bonetransform) {
+        void *fn= gamedll_resolve("Server_GetBlendingInterface");
 
-	if(!fn)
-		return(0);
+        if(!fn)
+                return(0);
 
-	return(((BLENDIFACE_PASS) fn)(version, ppinterface, pstudio,
-					rotationmatrix, bonetransform));
+        return(((BLENDIFACE_PASS) fn)(version, ppinterface, pstudio,
+                                        rotationmatrix, bonetransform));
 }
