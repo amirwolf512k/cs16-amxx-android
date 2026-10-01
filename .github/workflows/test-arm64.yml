@@ -38,7 +38,8 @@ jobs:
       - name: Fetch hlsdk-portable (gitignored inside engine source)
         shell: bash
         run: |
-          git clone --depth 1 -b mobile_hacks https://github.com/FWGS/hlsdk-portable \
+          git clone --depth 1 -b mobile_hacks --recursive --shallow-submodules \
+            https://github.com/FWGS/hlsdk-portable \
             xash3d-fwgs-master/3rdparty/hlsdk-portable
 
       - name: Build HL gamedll for host arch
