@@ -49,6 +49,11 @@ void Android_Init( void )
 	jni.getAndroidID = (*jni.env)->GetMethodID( jni.env, jni.actcls, "getAndroidID", "()Ljava/lang/String;" );
 	jni.saveAndroidID = (*jni.env)->GetMethodID( jni.env, jni.actcls, "saveAndroidID", "(Ljava/lang/String;)V" );
 	jni.showMOTD = (*jni.env)->GetMethodID( jni.env, jni.actcls, "showMOTD", "([B)V" );
+
+	// v21: a failed lookup leaves a pending exception; clear it so
+	// nothing downstream (filesystem assets, SDL) trips over it
+	if( (*jni.env)->ExceptionCheck( jni.env ))
+		(*jni.env)->ExceptionClear( jni.env );
 #endif // !XASH_SDL
 }
 
@@ -137,6 +142,11 @@ void Android_ShowMOTD( const char *html )
 	(*jni.env)->SetByteArrayRegion( jni.env, jbytes, 0, (jsize)len, (const jbyte *)html );
 	(*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.showMOTD, jbytes );
 	(*jni.env)->DeleteLocalRef( jni.env, jbytes );
+
+	// v21: showMOTD catches Throwable internally, but never leave a
+	// pending exception behind just in case
+	if( (*jni.env)->ExceptionCheck( jni.env ))
+		(*jni.env)->ExceptionClear( jni.env );
 }
 
 /*

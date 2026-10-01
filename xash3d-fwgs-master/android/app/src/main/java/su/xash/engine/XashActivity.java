@@ -120,8 +120,13 @@ public class XashActivity extends SDLActivity {
 	private String[] getAssetsList(boolean isEngine, String path) {
 		AssetManager am = getAssets(isEngine);
 
+		// v21: never let a NullPointerException reach the JNI caller
+		if (am == null)
+			return new String[]{};
+
 		try {
-			return am.list(path);
+			String[] list = am.list(path);
+			return list != null ? list : new String[]{};
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
