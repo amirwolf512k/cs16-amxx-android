@@ -52,6 +52,17 @@ for GAME in cstrike valve; do
         cp -r "$GAMEDATA_SRC" "$OUT/stage-$GAME/addons/amxmodx/data/gamedata"
 done
 
+# v18: GeoIP database for the geoip module. geoip_main.cpp looks for
+# <gamedir>/addons/amxmodx/data/GeoLite2-{City,Country}.mmdb — ship the
+# Country database bundled in the module source tree.
+GEOIP_DB="$ROOT/amxmodx-FWGS/modules/geoip/GeoLite2-Country.mmdb"
+if [ -f "$GEOIP_DB" ]; then
+        for GAME in cstrike valve; do
+                mkdir -p "$OUT/stage-$GAME/addons/amxmodx/data"
+                cp "$GEOIP_DB" "$OUT/stage-$GAME/addons/amxmodx/data/GeoLite2-Country.mmdb"
+        done
+fi
+
 # v12 fix: the zips must carry the GAME DIRECTORY PREFIX. Both installers
 # extract into <xash>/ root:
 #   cs16client MainActivity  -> expects "cstrike/..." entries

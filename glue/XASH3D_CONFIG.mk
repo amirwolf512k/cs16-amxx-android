@@ -16,6 +16,16 @@ MM_SRC ?= $(GLUE_DIR)/../metamod-fwgs
 FS_SRC ?= $(GLUE_DIR)/../filesystem_stdio_xash
 HLSDK_SRC ?= $(MM_SRC)/hlsdk
 
+# a1ba's module makefiles reference these legacy names:
+#   SRCPATH — the amxmodx source root (geoip: libmaxminddb, sqlite: bundled
+#   sqlite3, json: parson)
+#   HLSDK / METAMOD — hlsdk-portable and metamod SDK headers (were empty
+#   before; the aggregate includes from XASH3D_CONFIG made most builds work,
+#   but modules that reach into third_party through SRCPATH failed)
+SRCPATH := $(AMXX_SRC)
+HLSDK := $(HLSDK_SRC)
+METAMOD := $(MM_SRC)
+
 LOCAL_C_INCLUDES += \
         $(AMXX_SRC)/public/sdk \
         $(AMXX_SRC)/public \

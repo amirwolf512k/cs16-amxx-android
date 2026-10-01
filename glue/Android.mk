@@ -23,6 +23,10 @@ include $(AMXXROOT)/modules/cstrike/cstrike/Android.mk
 include $(AMXXROOT)/modules/cstrike/csx/Android.mk
 include $(AMXXROOT)/modules/nvault/Android.mk
 include $(AMXXROOT)/modules/sockets/Android.mk
+include $(AMXXROOT)/modules/regex/Android.mk
+include $(AMXXROOT)/modules/geoip/Android.mk
+include $(AMXXROOT)/modules/sqlite/Android.mk
+include $(AMXXROOT)/modules/json/Android.mk
 
 $(call import-add-path,$(AMXXROOT))
 $(call import-module,third_party)

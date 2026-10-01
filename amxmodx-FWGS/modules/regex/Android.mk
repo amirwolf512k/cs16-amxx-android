@@ -25,6 +25,9 @@ LOCAL_SRC_FILES := \
 	CRegEx.cpp \
 	utils.cpp
 
-LOCAL_SHARED_LIBRARIES := pcre
+# v18: third_party/pcre builds as a STATIC library (BUILD_STATIC_LIBRARY),
+# so it must be linked via LOCAL_STATIC_LIBRARIES. The old SHARED entry made
+# ndk-build abort with "cannot find module for libpcre.so".
+LOCAL_STATIC_LIBRARIES := pcre
 
 include $(BUILD_SHARED_LIBRARY)
