@@ -394,6 +394,21 @@ char * DLLINTERNAL MPlugin::resolve_suffix(const char *path) {
 	static char tmpbuf[PATH_MAX];
 	char *found;
 
+	// v15: try the path AS GIVEN first. Absolute paths handed to us by
+	// plugins (AMXX LOAD_MODULE -> LOAD_PLUGIN, or "meta load /abs/x.so")
+	// already end in the .so extension; without this stat resolve() only
+	// found files via prefix/suffix VARIANTS (mm_x, x_mm, x.so.so,
+	// x_amd64.so ...) and returned ME_NOTFOUND for verbatim existing
+	// paths. On Android every AMXX module is loaded with an absolute
+	// path, so all of them silently failed their metamod attach, ran
+	// with NULL DLL_FUNCTIONS/enginefuncs_t tables and crashed the
+	// server at worldspawn (OnPluginsLoaded -> g_pFunctionTable->pfnX).
+	if(stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
+		static char verbatim[PATH_MAX];
+		STRNCPY(verbatim, path, sizeof(verbatim));
+		return(verbatim);
+	}
+
 	// Hmm, recursion.
 	if(!strstr(path, "_mm")) {
 		safevoid_snprintf(buf, sizeof(buf), "%s_mm", path);

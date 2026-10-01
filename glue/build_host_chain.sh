@@ -61,9 +61,15 @@ build_module() { # <name> <dir> <srcs...>
         local name=$1 dir=$2; shift 2
         local objs=""
         mkdir -p "$OUT/obj_$name"
-        set -- "$@" amxxmodule MemoryUtils   # SDK glue is part of every module
+        # SDK glue + detour machinery is part of every module (matches the
+        # Android AMBuild: engine module dlopens only if CDetourManager is in)
+        set -- "$@" amxxmodule MemoryUtils detours asm
         for s in "$@"; do
-                for src in "$AMXX/modules/$dir/$s.cpp" "$AMXX/public/sdk/$s.cpp" "$AMXX/public/memtools/MemoryUtils.cpp"; do
+                for src in "$AMXX/modules/$dir/$s.cpp" "$AMXX/public/sdk/$s.cpp" \
+                           "$AMXX/public/memtools/$s.cpp" \
+                           "$AMXX/public/memtools/CDetour/$s.cpp" \
+                           "$AMXX/public/memtools/CDetour/asm/$s.c" \
+                           "$AMXX/public/memtools/MemoryUtils.cpp"; do
                         if [ -f "$src" ]; then
                                 o="$OUT/obj_$name/$(basename $s)_$name.o"
                                 $CXX $COMMON -I"$AMXX/modules/$dir" -c -o "$o" "$src"

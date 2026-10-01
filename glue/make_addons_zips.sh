@@ -42,6 +42,16 @@ cp -r "$STAGE/valve"   "$OUT/stage-valve"
 install_libs "$OUT/stage-cstrike"
 install_libs "$OUT/stage-valve"
 
+# v15: ship AMXX gamedata (common.games / modules.games / ...) — fakemeta
+# disables its get/set_ent_data* natives without it and many plugins rely
+# on them. Lookup path is <gamedir>/addons/amxmodx/data/gamedata.
+GAMEDATA_SRC="$ROOT/amxmodx-FWGS/gamedata"
+for GAME in cstrike valve; do
+        mkdir -p "$OUT/stage-$GAME/addons/amxmodx/data"
+        rm -rf "$OUT/stage-$GAME/addons/amxmodx/data/gamedata"
+        cp -r "$GAMEDATA_SRC" "$OUT/stage-$GAME/addons/amxmodx/data/gamedata"
+done
+
 # v12 fix: the zips must carry the GAME DIRECTORY PREFIX. Both installers
 # extract into <xash>/ root:
 #   cs16client MainActivity  -> expects "cstrike/..." entries

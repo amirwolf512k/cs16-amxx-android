@@ -75,7 +75,7 @@ export LD_LIBRARY_PATH="$ENGINE/build/filesystem:$ENGINE/3rdparty/hlsdk-portable
 timeout 60 "$ENGINE/build/engine/xash" \
         -dev 2 -log -condebug \
         -dll "$TEST/$(basename "$GAMELIB")" \
-        +map amxx_test \
+        +map amxx_test +meta list \
         -noip -nojoy -nosteam > console.txt 2>&1 || true
 
 echo "================= LOG (tail) ================="
@@ -89,5 +89,11 @@ grep -q "Scrolling message" console.txt         || { PASS=0; FAIL="$FAIL scrollm
 grep -q "Crash: signal\|SIGSEGV\|Segmentation" console.txt && { PASS=0; FAIL="$FAIL CRASH"; }
 grep -q "was left pending" console.txt          && { PASS=0; FAIL="$FAIL module-left-pending"; }
 grep -q "failed to load: Module" console.txt    && { PASS=0; FAIL="$FAIL plugin-module-missing"; }
-if [ "$PASS" = 1 ]; then echo "RESULT: PASS — full AMXX chain works on $ARCH"; else echo "RESULT: FAIL:$FAIL"; fi
+# v15: modules must actually ATTACH to metamod (LOAD_PLUGIN with an
+# absolute path used to fail in resolve() and silently left every module
+# unattached -> NULL api tables -> SIGSEGV in OnPluginsLoaded at spawn).
+grep -q "registration failed\|LOAD_PLUGIN failed" console.txt && { PASS=0; FAIL="$FAIL module-metamod-attach"; }
+MODULE_PLUGINS=$(grep -cE '\] .*RUN' console.txt || true)
+[ "$MODULE_PLUGINS" -ge 3 ] || { PASS=0; FAIL="$FAIL meta-list-only-$MODULE_PLUGINS-plugins"; }
+if [ "$PASS" = 1 ]; then echo "RESULT: PASS — full AMXX chain works on $ARCH ($MODULE_PLUGINS plugins incl. modules)"; else echo "RESULT: FAIL:$FAIL"; fi
 exit $((1 - PASS))

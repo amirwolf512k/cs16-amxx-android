@@ -12,22 +12,28 @@
 
 int LoadMetamodPlugin(const char *path, void **handle, PLUG_LOADTIME now)
 {
-	int err = 0;
-	if ( (err = LOAD_PLUGIN(PLID, path, now, handle)) || !*handle)
-	{
-		LOG_MESSAGE(PLID, "Can't Attach Module \"%s\".", path);
-		return 0;
-	}
+        int err = 0;
+        if ( (err = LOAD_PLUGIN(PLID, path, now, handle)) || !*handle)
+        {
+                // v15: also log to the ENGINE log (AMXXLOG) with the real
+                // metamod error code — LOG_MESSAGE alone only reaches
+                // metamod.log, which is not part of device bugreports, and
+                // CModule::attachMetamod can only see a boolean from us.
+                AMXXLOG_Log("[AMXX] LOAD_PLUGIN failed for \"%s\" (metamod err=%d, handle=%s)",
+                            path, err, *handle ? "set" : "NULL");
+                LOG_MESSAGE(PLID, "Can't Attach Module \"%s\".", path);
+                return 0;
+        }
 
-	return 1;
+        return 1;
 }
 
 int UnloadMetamodPlugin(void *handle)
 {
-	if (UNLOAD_PLUGIN_BY_HANDLE(PLID, (void *)handle, PT_ANYTIME, PNL_PLUGIN))
-	{
-		return 0;
-	}
+        if (UNLOAD_PLUGIN_BY_HANDLE(PLID, (void *)handle, PT_ANYTIME, PNL_PLUGIN))
+        {
+                return 0;
+        }
 
-	return 1;
+        return 1;
 }

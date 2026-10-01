@@ -500,6 +500,15 @@ char * DLLINTERNAL MPlugin::resolve_suffix(const char *path) {
 	static char tmpbuf[PATH_MAX];
 	char *found;
 
+	// v15: try the path AS GIVEN first (see metamod-p tree for the full
+	// story): without it, verbatim absolute .so paths -> ME_NOTFOUND ->
+	// AMXX modules never attach to metamod -> NULL API tables -> crash.
+	if(stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
+		static char verbatim[PATH_MAX];
+		STRNCPY(verbatim, path, sizeof(verbatim));
+		return(verbatim);
+	}
+
 	// Hmm, recursion.
 	if(!strstr(path, "_mm")) {
 		safevoid_snprintf(buf, sizeof(buf), "%s_mm", path);

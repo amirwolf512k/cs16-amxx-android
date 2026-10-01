@@ -32,6 +32,38 @@ enginefuncs_t *g_pengfuncsTable_Post;
 NEW_DLL_FUNCTIONS *g_pNewFunctionsTable;
 NEW_DLL_FUNCTIONS *g_pNewFunctionsTable_Post;
 
+// v15: when metamod could not attach this module (LOAD_PLUGIN failure for
+// any reason - on Android this used to be metamod's resolve() rejecting
+// verbatim absolute .so paths), the pointers above stay NULL and module
+// code that writes through them (OnPluginsLoaded ->
+// g_pFunctionTable->pfnAddToFullPack=NULL etc.) segfaults at worldspawn.
+// Point them at static all-NULL tables instead: writes are harmless and
+// hooks simply stay inactive. If metamod DOES attach, GetEntityAPI2 /
+// GetEngineFunctions repoint them at metamod's real storage first, and the
+// fallback below becomes a no-op.
+static DLL_FUNCTIONS g_DummyEntityAPI_Table;
+static DLL_FUNCTIONS g_DummyEntityAPI_Post_Table;
+static enginefuncs_t g_DummyEngineFuncs_Table;
+static enginefuncs_t g_DummyEngineFuncs_Post_Table;
+static NEW_DLL_FUNCTIONS g_DummyNewFuncs_Table;
+static NEW_DLL_FUNCTIONS g_DummyNewFuncs_Post_Table;
+
+void EnsureApiTables()
+{
+	if (!g_pFunctionTable)
+		g_pFunctionTable = &g_DummyEntityAPI_Table;
+	if (!g_pFunctionTable_Post)
+		g_pFunctionTable_Post = &g_DummyEntityAPI_Post_Table;
+	if (!g_pengfuncsTable)
+		g_pengfuncsTable = &g_DummyEngineFuncs_Table;
+	if (!g_pengfuncsTable_Post)
+		g_pengfuncsTable_Post = &g_DummyEngineFuncs_Post_Table;
+	if (!g_pNewFunctionsTable)
+		g_pNewFunctionsTable = &g_DummyNewFuncs_Table;
+	if (!g_pNewFunctionsTable_Post)
+		g_pNewFunctionsTable_Post = &g_DummyNewFuncs_Post_Table;
+}
+
 // GetEntityAPI2 functions
 static DLL_FUNCTIONS g_EntityAPI_Table = 
 {
@@ -2546,6 +2578,13 @@ C_DLLEXPORT int AMXX_Attach(PFN_REQ_FNPTR reqFnptrFunc)
 	// Check pointer
 	if (!reqFnptrFunc)
 		return AMXX_PARAM;
+
+	// v15: never let module code run with NULL api tables (see
+	// EnsureApiTables above) - runs after the metamod attach attempt, so
+	// real tables (if metamod attached us) are already in place.
+#ifdef USE_METAMOD
+	EnsureApiTables();
+#endif
 
 	g_fn_RequestFunction = reqFnptrFunc;
 

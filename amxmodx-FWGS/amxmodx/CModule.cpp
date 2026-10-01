@@ -90,11 +90,13 @@ bool CModule::attachMetamod(const char *mmfile, PLUG_LOADTIME now)
 
         if (!res)
         {
-                // v10: log the metamod error code so device logs show WHY
-                // a module could not be registered with metamod (previously
-                // this failure was completely silent).
-                AMXXLOG_Log("[AMXX] Metamod registration failed for module \"%s\" (err=%d, loadtime=%d)",
-                            m_Filename.chars(), res, (int)now);
+                // v10: log the failure so device logs show that a module
+                // could not be registered with metamod. v15: don't print the
+                // meaningless boolean as "err" — LoadMetamodPlugin now logs
+                // the real metamod error code to the engine log.
+                AMXXLOG_Log("[AMXX] Module \"%s\" could not be registered with metamod "
+                            "(its engine/dll hooks stay inactive)",
+                            m_Filename.chars());
                 m_Metamod = false;
         }
 
