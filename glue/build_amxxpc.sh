@@ -20,6 +20,7 @@ mkdir -p "$OUT"
 	NDK_LIBS_OUT="$OUT/libs" \
 	AMXX_SRC="$ROOT/amxmodx-FWGS" \
 	XASH_FS="$ROOT/xash3d-fwgs-master" \
+	FS_SRC="$ROOT/filesystem_stdio_xash" \
 	MM_SRC="$ROOT/metamod-fwgs" \
 	HLSDK_SRC="$ROOT/metamod-fwgs/hlsdk" \
 	GLUE_DIR="$HERE" \
