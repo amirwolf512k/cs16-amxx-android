@@ -17,7 +17,7 @@ SRCFILES="api_hook api_info commands_meta conf_meta dllapi engine_api engineinfo
 game_support game_autodetect h_export linkgame linkplug log_meta meta_eiface \
 metamod mlist mplayer mplugin mqueue mreg mutil osdep osdep_p reg_support \
 sdk_util studioapi support_meta thread_logparse vdate \
-osdep_linkent_xash osdep_detect_gamedll_linux"
+osdep_linkent_linux osdep_detect_gamedll_linux xash_exports"
 
 INCLUDES=(-I"$SRCDIR" -I"$SRCDIR/../hlsdk/engine" -I"$SRCDIR/../hlsdk/common" -I"$SRCDIR/../hlsdk/dlls" -I"$SRCDIR/../hlsdk/pm_shared" -I"$SRCDIR/../hlsdk")
 COMMON_FLAGS=(-O2 -g -std=gnu++98 -fPIC -fno-exceptions -fno-rtti -fvisibility=hidden
