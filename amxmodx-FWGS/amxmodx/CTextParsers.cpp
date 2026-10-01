@@ -458,8 +458,15 @@ SMCError TextParsers::ParseStream_SMC(void *stream,
 			{
 				if (in_quote)
 				{
-					/* If i was 0, we could have reparsed, so make sure there's no buffer underrun */
-					if ((&parse_point[i] != in_buf) && c == '"' && parse_point[i - 1] != '\\')
+					/* If i was 0, we could have reparsed, so make sure there's no buffer underrun.
+					* LP64 fix: with unsigned int i == 0, "parse_point[i - 1]" wrapped to
+					* parse_point + 4GB (32-bit builds silently computed parse_point - 1) and
+					* crashed when a read chunk boundary landed on a quote inside a quoted
+					* string. When i == 0 the guard above guarantees parse_point != in_buf,
+					* so parse_point[-1] is the last byte of the previous chunk, still in
+					* the buffer. */
+					if ((&parse_point[i] != in_buf) && c == '"'
+						&& (i != 0 ? parse_point[i - 1] : parse_point[-1]) != '\\')
 					{
 						/* If we reached a quote in an ignore phase,
 						* we're staging a string and we must rotate it out.

@@ -5,6 +5,7 @@
 set -e
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 ENGINE="$ROOT/xash3d-fwgs-master"
+AMXX="$ROOT/amxmodx-FWGS"
 OUT="$ROOT/out/host"
 TEST="$ROOT/out/host-test"
 ARCH=$(uname -m)
@@ -23,10 +24,25 @@ for n in amd64 x86_64 arm64 aarch64; do
         cp "$OUT/libmetamod_android_$ARCH.so" "$TEST/valve/addons/metamod/dlls/libmetamod_android_$n.so"
 done
 
-# host test: cstrike/csx/fakemeta modules reference ReGameDLL API symbols
-# which only exist when the real CS gamedll is used; keep the HL test chain
-# to modules that resolve against the HL gamedll.
-sed -i -e '/^fakemeta$/d' "$TEST/valve/addons/amxmodx/configs/modules.ini"
+# v16: fakemeta now loads on the host too. It imports two ReGameDLL API
+# symbols (RegamedllApi_Init / ReGameHookchains) that normally come from the
+# CS gamedll; a stub library (Init=false) satisfies them so the REAL
+# OnAmxxAttach -> LoadGameConfigFile -> SMC gamedata parse path runs here.
+# cstrike/csx stay out (they need the actual ReGameDLL game dll).
+g++ -O1 -g -fPIC -shared -o "$OUT/regamedll_stub.so" "$ROOT/glue/host_regamedll_stub.cpp"
+
+# v16 regression gate: the v15 arm64 crash was TextParsers::ParseStream_SMC
+# (parse_point[i-1] with i==0 wrapping to parse_point+4GB on LP64) while
+# parsing the shipped gamedata — parse EVERY shipped gamedata file through
+# the real core library here; any LP64 wrap reproduces deterministically.
+g++ -O0 -g -std=gnu++11 -I"$AMXX/public" -o "$OUT/smc_repro" "$ROOT/scripts/smc_repro.cpp" -ldl
+if ! "$OUT/smc_repro" "$OUT/libmm_amxmodx.so" "$AMXX/gamedata" > "$TEST/smc_repro.txt" 2>&1; then
+        PASS_SMC=0
+        tail -5 "$TEST/smc_repro.txt"
+else
+        PASS_SMC=1
+        tail -1 "$TEST/smc_repro.txt"
+fi
 
 # test map + stand-in models
 mkdir -p "$TEST/valve/maps" "$TEST/valve/models" "$TEST/valve/gfx"
@@ -72,11 +88,13 @@ cp "$GAMELIB" "$TEST/gamelibs/libserver_hardfp.so"
 export XASH3D_GAMELIBDIR="$TEST/gamelibs"
 export XASH3D_AMXX_LIBDIR="$TEST/amxxpriv"
 export LD_LIBRARY_PATH="$ENGINE/build/filesystem:$ENGINE/3rdparty/hlsdk-portable/build/dlls:$LD_LIBRARY_PATH"
-timeout 60 "$ENGINE/build/engine/xash" \
+export LD_PRELOAD="$OUT/regamedll_stub.so"
+timeout -k 10 60 "$ENGINE/build/engine/xash" \
         -dev 2 -log -condebug \
         -dll "$TEST/$(basename "$GAMELIB")" \
-        +map amxx_test +meta list \
+        +map amxx_test +meta list +amxx modules \
         -noip -nojoy -nosteam > console.txt 2>&1 || true
+unset LD_PRELOAD
 
 echo "================= LOG (tail) ================="
 tail -40 console.txt
@@ -95,5 +113,11 @@ grep -q "failed to load: Module" console.txt    && { PASS=0; FAIL="$FAIL plugin-
 grep -q "registration failed\|LOAD_PLUGIN failed" console.txt && { PASS=0; FAIL="$FAIL module-metamod-attach"; }
 MODULE_PLUGINS=$(grep -cE '\] .*RUN' console.txt || true)
 [ "$MODULE_PLUGINS" -ge 3 ] || { PASS=0; FAIL="$FAIL meta-list-only-$MODULE_PLUGINS-plugins"; }
+# v16: the gamedata SMC parse regression gate (LP64 wrap fix)
+[ "$PASS_SMC" = 1 ] || { PASS=0; FAIL="$FAIL smc-gamedata-parse"; }
+# fakemeta must actually load now: its "Module path is" line is only logged
+# on a successful module load, and it carries the gamedata attach path
+FMMETA=$(grep -c "Module path is .*libamxx_fakemeta.so" console.txt || true)
+[ "$FMMETA" -ge 1 ] || { PASS=0; FAIL="$FAIL fakemeta-not-running"; }
 if [ "$PASS" = 1 ]; then echo "RESULT: PASS — full AMXX chain works on $ARCH ($MODULE_PLUGINS plugins incl. modules)"; else echo "RESULT: FAIL:$FAIL"; fi
 exit $((1 - PASS))
