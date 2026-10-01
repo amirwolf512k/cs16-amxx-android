@@ -80,6 +80,10 @@ jobs:
           cp cs16-client-main/common/interface.cpp cs16-client-main/3rdparty/mainui_cpp/common/
           cp cs16-client-main/common/interface.h   cs16-client-main/3rdparty/mainui_cpp/common/
           cp -r cs16-client-main/public            cs16-client-main/3rdparty/mainui_cpp/public
+          # IGameMenuExports.h does '#include "../dlls/cdll_dll.h"' which
+          # resolves as <includedir>/../dlls/cdll_dll.h → mainui_cpp/dlls/
+          mkdir -p cs16-client-main/3rdparty/mainui_cpp/dlls
+          cp cs16-client-main/dlls/cdll_dll.h cs16-client-main/3rdparty/mainui_cpp/dlls/
           for ABI in arm64-v8a armeabi-v7a; do
             cmake -S cs16-client-main/3rdparty/mainui_cpp -B build/mainui-$ABI \
               -DCMAKE_TOOLCHAIN_FILE="$TC" \
