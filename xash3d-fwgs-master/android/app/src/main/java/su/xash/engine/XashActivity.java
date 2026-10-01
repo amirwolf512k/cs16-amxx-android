@@ -1,30 +1,52 @@
 package su.xash.engine;
 
 import android.annotation.SuppressLint;
+import android.app.Dialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.res.AssetManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings.Secure;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import org.libsdl.app.SDLActivity;
 
 import su.xash.engine.util.CrashReports;
 import su.xash.engine.util.SoftKeyboardPan;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 public class XashActivity extends SDLActivity {
 	private boolean mUseVolumeKeys;
 	private String mPackageName;
 	private static final String TAG = "XashActivity";
+
+	// cs16-amxx-android v20: sandboxed HTML MOTD (set in getArguments())
+	private String mMotdBaseDir;
+	private String mMotdGameDir;
+	private Dialog mMotdDialog;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -201,7 +223,12 @@ public class XashActivity extends SDLActivity {
 		} else {
 			String rootPath = Environment.getExternalStorageDirectory().getAbsolutePath() + "/xash";
 			nativeSetenv("XASH3D_BASEDIR", rootPath);
+			basedir = rootPath;
 		}
+
+		// v20: remember the real game dirs for the MOTD WebView sandbox
+		mMotdBaseDir = basedir;
+		mMotdGameDir = gamedir;
 
 		mUseVolumeKeys = getIntent().getBooleanExtra("usevolume", false);
 		mPackageName = getIntent().getStringExtra("package");
@@ -216,5 +243,212 @@ public class XashActivity extends SDLActivity {
 		if (argv == null) argv = "-console -log";
 
 		return argv.split(" ");
+	}
+
+	// =====================================================================
+	// cs16-amxx-android v20: sandboxed HTML MOTD rendering ("Message of the
+	// Day" like real CS 1.6). The engine hands us the raw "MOTD" user
+	// message payload as bytes; we render it in a WebView that can only
+	// read files inside the current game dir (valve/ or cstrike/), can
+	// never reach addons/ (metamod/AMXX data, top15 stats) and has no
+	// JavaScript, DOM storage, content:// or network access at all.
+	// =====================================================================
+
+	/** Called from native (JNI) when a client MOTD contains HTML. */
+	public void showMOTD( final byte[] htmlBytes ) {
+		runOnUiThread( new Runnable() {
+			@Override
+			public void run() {
+				showMOTDOnUiThread( htmlBytes );
+			}
+		} );
+	}
+
+	private void showMOTDOnUiThread( byte[] htmlBytes ) {
+		try {
+			if ( mMotdDialog != null ) {
+				mMotdDialog.dismiss();
+				mMotdDialog = null;
+			}
+
+			String html = new String( htmlBytes, "UTF-8" );
+			String base = mMotdBaseDir != null ? mMotdBaseDir
+				: Environment.getExternalStorageDirectory().getAbsolutePath() + "/xash";
+			String game = mMotdGameDir != null ? mMotdGameDir : "valve";
+			final File gameDir = new File( base, game );
+
+			final Dialog dialog = new Dialog( this, android.R.style.Theme_Black_NoTitleBar );
+
+			LinearLayout root = new LinearLayout( this );
+			root.setOrientation( LinearLayout.VERTICAL );
+			root.setBackgroundColor( 0xEE101010 );
+
+			// --- top bar: title + close button -----------------------
+			LinearLayout bar = new LinearLayout( this );
+			bar.setOrientation( LinearLayout.HORIZONTAL );
+			bar.setGravity( Gravity.CENTER_VERTICAL );
+			bar.setPadding( dp( 8 ), dp( 4 ), dp( 8 ), dp( 4 ) );
+
+			TextView title = new TextView( this );
+			title.setText( "Message of the Day" );
+			title.setTextColor( 0xFFFFFFFF );
+			title.setTextSize( 16 );
+			title.setPadding( dp( 4 ), 0, 0, 0 );
+			title.setSingleLine( true );
+			bar.addView( title, new LinearLayout.LayoutParams(
+					0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f ) );
+
+			Button close = new Button( this );
+			close.setText( "Close" );
+			close.setOnClickListener( new View.OnClickListener() {
+				@Override
+				public void onClick( View v ) {
+					dialog.dismiss();
+				}
+			} );
+			bar.addView( close, new LinearLayout.LayoutParams(
+					ViewGroup.LayoutParams.WRAP_CONTENT,
+					ViewGroup.LayoutParams.WRAP_CONTENT ) );
+
+			// --- sandboxed WebView ------------------------------------
+			WebView wv = createMOTDWebView( gameDir );
+			wv.loadDataWithBaseURL( "https://motd.local/", html, "text/html", "utf-8", null );
+
+			root.addView( bar, new LinearLayout.LayoutParams(
+					ViewGroup.LayoutParams.MATCH_PARENT,
+					ViewGroup.LayoutParams.WRAP_CONTENT ) );
+			root.addView( wv, new LinearLayout.LayoutParams(
+					ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f ) );
+
+			dialog.setContentView( root );
+			dialog.setOnDismissListener( new DialogInterface.OnDismissListener() {
+				@Override
+				public void onDismiss( DialogInterface d ) {
+					mMotdDialog = null;
+				}
+			} );
+
+			mMotdDialog = dialog;
+			dialog.show();
+		} catch ( Throwable t ) {
+			Log.w( TAG, "showMOTD failed", t );
+		}
+	}
+
+	@SuppressLint("SetJavaScriptEnabled")
+	private WebView createMOTDWebView( final File gameDir ) {
+		WebView wv = new WebView( this );
+		WebSettings s = wv.getSettings();
+
+		// --- sandbox defaults: render HTML/CSS/images only ---------
+		s.setJavaScriptEnabled( false );
+		s.setAllowFileAccess( false );
+		s.setAllowContentAccess( false );
+		s.setAllowFileAccessFromFileURLs( false );
+		s.setAllowUniversalAccessFromFileURLs( false );
+		s.setBlockNetworkLoads( true );
+		s.setBlockNetworkImage( true );
+		s.setSavePassword( false );
+		s.setDomStorageEnabled( false );
+		s.setCacheMode( WebSettings.LOAD_NO_CACHE );
+		s.setMediaPlaybackRequiresUserGesture( true );
+
+		wv.setWebViewClient( new WebViewClient() {
+			@Override
+			public WebResourceResponse shouldInterceptRequest( WebView view, WebResourceRequest request ) {
+				Uri url = request.getUrl();
+				String scheme = url.getScheme();
+
+				if ( scheme == null )
+					return emptyResponse();
+
+				// game-dir relative resources: served from disk by us
+				if ( scheme.equals( "https" ) && "motd.local".equals( url.getHost() ) ) {
+					File f = resolveInGameDir( gameDir, url.getPath() );
+					if ( f != null ) {
+						try {
+							return new WebResourceResponse( guessMime( f.getName() ),
+								null, new FileInputStream( f ) );
+						} catch ( Throwable t ) {
+							return emptyResponse();
+						}
+					}
+					return emptyResponse();
+				}
+
+				if ( scheme.equals( "data" ) )
+					return null; // inline data URIs are harmless
+
+				// network, file://, content:// - everything else is blocked
+				return emptyResponse();
+			}
+
+			@Override
+			public boolean shouldOverrideUrlLoading( WebView view, WebResourceRequest request ) {
+				// block navigation away from the rendered MOTD
+				return true;
+			}
+		} );
+
+		return wv;
+	}
+
+	/**
+	 * Resolve a URL path against the game dir with strict sandboxing:
+	 * no ".." traversal, no "addons" access, result must stay inside
+	 * the game dir and exist as a plain file.
+	 */
+	private static File resolveInGameDir( File gameDir, String uriPath ) {
+		try {
+			if ( uriPath == null || uriPath.isEmpty() )
+				return null;
+
+			String path = Uri.decode( uriPath );
+			if ( path.indexOf( '\0' ) >= 0 )
+				return null;
+
+			File root = gameDir.getCanonicalFile();
+			File cur = root;
+
+			for ( String seg : path.split( "/" ) ) {
+				if ( seg.isEmpty() || seg.equals( "." ) )
+					continue;
+				if ( seg.equals( ".." ) )
+					return null;
+				if ( seg.equalsIgnoreCase( "addons" ) )
+					return null; // addons is off-limits (metamod/AMXX, top15 data)
+				cur = new File( cur, seg );
+			}
+
+			File resolved = cur.getCanonicalFile();
+			if ( !resolved.getPath().startsWith( root.getPath() + File.separator ) )
+				return null;
+			if ( !resolved.isFile() )
+				return null;
+			return resolved;
+		} catch ( Throwable t ) {
+			return null;
+		}
+	}
+
+	private static WebResourceResponse emptyResponse() {
+		return new WebResourceResponse( "text/plain", "utf-8",
+			new ByteArrayInputStream( new byte[0] ) );
+	}
+
+	private static String guessMime( String name ) {
+		String n = name.toLowerCase( Locale.US );
+		if ( n.endsWith( ".html" ) || n.endsWith( ".htm" ) ) return "text/html";
+		if ( n.endsWith( ".jpg" ) || n.endsWith( ".jpeg" ) ) return "image/jpeg";
+		if ( n.endsWith( ".png" ) ) return "image/png";
+		if ( n.endsWith( ".gif" ) ) return "image/gif";
+		if ( n.endsWith( ".bmp" ) ) return "image/bmp";
+		if ( n.endsWith( ".css" ) ) return "text/css";
+		if ( n.endsWith( ".txt" ) ) return "text/plain";
+		return "application/octet-stream";
+	}
+
+	private int dp( int v ) {
+		return Math.round( v * getResources().getDisplayMetrics().density );
 	}
 }

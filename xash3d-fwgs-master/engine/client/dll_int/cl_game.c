@@ -3755,6 +3755,28 @@ static IVoiceTweak gVoiceApi =
 };
 
 // engine callbacks
+/*
+=============
+pfnShowMOTD
+
+cs16-amxx-android v20: the client dll accumulated an HTML "MOTD" user
+message and asks the engine to render it. On Android this opens a
+sandboxed WebView dialog (no JS, no network, filesystem access limited
+to the current gamedir, addons/ excluded). Other platforms: no-op.
+=============
+*/
+static void GAME_EXPORT pfnShowMOTD( const char *html )
+{
+	if( COM_StringEmptyOrNULL( html ))
+		return;
+
+#if XASH_ANDROID
+	Android_ShowMOTD( html );
+#else
+	Con_Reportf( "%s: HTML MOTD rendering is only supported on Android\n", __func__ );
+#endif
+}
+
 static cl_enginefunc_t gEngfuncs =
 {
 	pfnSPR_Load,
@@ -3891,7 +3913,8 @@ static cl_enginefunc_t gEngfuncs =
 	pfnGetAppID,
 	Cmd_AliasGetList,
 	pfnVguiWrap2_GetMouseDelta,
-	pfnFilteredClientCmd
+	pfnFilteredClientCmd,
+	pfnShowMOTD
 };
 
 void CL_UnloadProgs( void )

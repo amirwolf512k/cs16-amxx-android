@@ -74,6 +74,15 @@ mv "$OUT/stage-cstrike/addons" "$OUT/stage-cstrike/cstrike/addons"
 mkdir -p "$OUT/stage-valve/valve"
 mv "$OUT/stage-valve/addons" "$OUT/stage-valve/valve/addons"
 
+# v20: player spray logo. The engine reads logos/remapped.bmp (GoldSrc
+# convention) on every connect and converts it to tempdecal.wad; colors
+# are preserved — no tinting/recoloring.
+for GAME in cstrike valve; do
+        if [ -d "$OUT/stage-$GAME/logos" ]; then
+                mv "$OUT/stage-$GAME/logos" "$OUT/stage-$GAME/$GAME/logos"
+        fi
+done
+
 (cd "$OUT/stage-cstrike" && zip -qr9 "$OUT/cstrike-addons.zip" cstrike)
 (cd "$OUT/stage-valve"   && zip -qr9 "$OUT/valve-addons.zip" valve)
 

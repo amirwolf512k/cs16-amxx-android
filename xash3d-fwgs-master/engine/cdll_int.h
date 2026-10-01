@@ -307,6 +307,11 @@ typedef struct cl_enginefuncs_s
 
 	// added in 2019 update, not documented yet
 	int		(*pfnFilteredClientCmd)( const char *cmd );
+
+	// cs16-amxx-android v20: show an HTML "MOTD" user message in a sandboxed
+	// platform dialog (Android: WebView). Client dlls that don't know this
+	// field simply copy a smaller struct, so appending here is ABI-safe.
+	void	(*pfnShowMOTD)( const char *html );
 } cl_enginefunc_t;
 
 #define CLDLL_INTERFACE_VERSION	7

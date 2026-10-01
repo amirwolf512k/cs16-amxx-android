@@ -56,13 +56,34 @@ void CHudMOTD :: Reset( void )
 	m_szMOTD.Clear();
 	m_iLines = 0;
 	m_bShow = false;
-	ignoreThisMotd = false;
 }
 
 #define LINE_HEIGHT  13
 #define ROW_GAP  13
 #define ROW_RANGE_MIN 30
 #define ROW_RANGE_MAX ( ScreenHeight - 100 )
+
+// v20: detect HTML MOTDs so they can be rendered by the engine in a
+// sandboxed WebView dialog (like real CS 1.6) instead of being drawn
+// as raw text on the HUD
+static qboolean MOTD_IsHTML( const char *pszText )
+{
+	static const char *pszTags[] =
+	{
+		"<html", "<!doctype", "<!DOCTYPE", "<body", "<br", "<p>", "<p ",
+		"<img", "<table", "<title", "<font", "<div", "<center",
+		"<b>", "<u>", "<i>", "<meta", "<head"
+	};
+
+	for( size_t i = 0; i < sizeof( pszTags ) / sizeof( pszTags[0] ); i++ )
+	{
+		if( strcasestr( pszText, pszTags[i] ))
+			return true;
+	}
+
+	return false;
+}
+
 int CHudMOTD :: Draw( float fTime )
 {
 	gHUD.m_iNoConsolePrint &= ~( 1 << 1 );
@@ -137,23 +158,24 @@ int CHudMOTD :: MsgFunc_MOTD( const char *pszName, int iSize, void *pbuf )
 		Reset(); // clear the current MOTD in prep for this one
 	}
 
-	if( ignoreThisMotd )
-		return 1;
-
 	BufferReader reader( pszName, pbuf, iSize );
 
 	int is_finished = reader.ReadByte();
 	m_szMOTD.Append( reader.ReadString() );
 
-	// we still don't support html tags in motd :(
-	if( strcasestr( m_szMOTD.String(), "<!DOCTYPE HTML>" ) )
-	{
-		Reset();
-		ignoreThisMotd = true;
-	}
-
 	if ( is_finished )
 	{
+		// v20: hand HTML MOTDs to the engine for sandboxed WebView rendering
+		// (works for both the join MOTD from motd.txt and plugin show_motd
+		// HTML like top15). The HTML is delivered inside the user message
+		// itself, so the dialog never needs to read anything from addons/.
+		if( gEngfuncs.pfnShowMOTD && MOTD_IsHTML( m_szMOTD.String() ))
+		{
+			gEngfuncs.pfnShowMOTD( m_szMOTD.String() );
+			Reset();
+			return 1;
+		}
+
 		int length = 0;
 		
 		m_iMaxLength = 0;

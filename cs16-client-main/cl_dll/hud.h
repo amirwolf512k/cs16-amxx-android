@@ -330,7 +330,9 @@ private:
 //
 //-----------------------------------------------------
 //
-//  MOTD in cs16 must render HTML, so it disabled
+//  v20 (cs16-amxx-android): HTML MOTDs are handed to the engine via
+//  pfnShowMOTD and rendered in a sandboxed WebView dialog (like real
+//  CS 1.6). Plain-text MOTDs still use the classic HUD drawing below.
 //
 
 class CHudMOTD : public CHudBase
@@ -354,7 +356,6 @@ protected:
 	
 	int m_iLines;
 	int m_iMaxLength;
-	bool ignoreThisMotd;
 };
 
 

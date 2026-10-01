@@ -34,6 +34,7 @@ struct jnimethods_s
 	jmethodID loadAndroidID;
 	jmethodID getAndroidID;
 	jmethodID saveAndroidID;
+	jmethodID showMOTD; // cs16-amxx-android v20: sandboxed HTML MOTD dialog
 } jni;
 
 void Android_Init( void )
@@ -47,6 +48,7 @@ void Android_Init( void )
 	jni.loadAndroidID = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadAndroidID", "()Ljava/lang/String;" );
 	jni.getAndroidID = (*jni.env)->GetMethodID( jni.env, jni.actcls, "getAndroidID", "()Ljava/lang/String;" );
 	jni.saveAndroidID = (*jni.env)->GetMethodID( jni.env, jni.actcls, "saveAndroidID", "(Ljava/lang/String;)V" );
+	jni.showMOTD = (*jni.env)->GetMethodID( jni.env, jni.actcls, "showMOTD", "([B)V" );
 #endif // !XASH_SDL
 }
 
@@ -106,6 +108,35 @@ const char *Android_LoadID( void )
 	(*jni.env)->DeleteLocalRef( jni.env, resultJNIStr );
 
 	return id;
+}
+
+/*
+========================
+Android_ShowMOTD
+
+cs16-amxx-android v20: render an HTML MOTD in a sandboxed WebView dialog
+managed by the activity. The payload is passed as a raw byte array so a
+malformed (non-modified-UTF-8) server string can't abort in NewStringUTF;
+Java decodes it as UTF-8 with replacement characters.
+========================
+*/
+void Android_ShowMOTD( const char *html )
+{
+	size_t len;
+	jbyteArray jbytes;
+
+	if( !jni.env || !jni.activity || !jni.showMOTD )
+		return;
+
+	len = Q_strlen( html );
+	jbytes = (*jni.env)->NewByteArray( jni.env, (jsize)len );
+
+	if( !jbytes )
+		return;
+
+	(*jni.env)->SetByteArrayRegion( jni.env, jbytes, 0, (jsize)len, (const jbyte *)html );
+	(*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.showMOTD, jbytes );
+	(*jni.env)->DeleteLocalRef( jni.env, jbytes );
 }
 
 /*

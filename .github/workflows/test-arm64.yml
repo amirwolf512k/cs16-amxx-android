@@ -72,7 +72,11 @@ jobs:
         shell: bash
         run: |
           cd xash3d-fwgs-master
-          python3 ./waf configure -o build-full -T release -8
+          # v20 fix: --enable-soft is required — ref/soft is opt-in in FWGS waf
+          # (default build only makes ref_gl), so run_client_test.sh could never
+          # find libref_soft.so and the client-connect test always failed with
+          # "Can't initialize any renderer"
+          python3 ./waf configure -o build-full -T release -8 --enable-soft
           python3 ./waf build
 
       - name: Run client-connect test and evaluate

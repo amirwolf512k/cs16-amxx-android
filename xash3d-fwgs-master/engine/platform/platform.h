@@ -102,6 +102,7 @@ void Android_Init( void );
 void *Android_GetNativeObject( const char *name );
 int Android_GetKeyboardHeight( void );
 void Android_Shutdown( void );
+void Android_ShowMOTD( const char *html );
 #endif
 
 #if XASH_WIN32
