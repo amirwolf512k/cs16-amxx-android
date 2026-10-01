@@ -65,7 +65,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update -qq || true
-          sudo apt-get install -y -qq libsdl2-dev xvfb x11-utils || \
+          sudo apt-get install -y -qq libsdl2-dev libfreetype-dev libfreetype6-dev xvfb x11-utils || \
             sudo apt-get install -y -qq xvfb || true
 
       - name: Build engine (full, with client + ref_soft)
