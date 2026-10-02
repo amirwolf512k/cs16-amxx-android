@@ -54,6 +54,16 @@ jobs:
             https://github.com/FWGS/hlsdk-portable \
             xash3d-fwgs-master/3rdparty/hlsdk-portable
 
+          # cs16-amxx-android v26: route the HL (valve) client MOTD through
+          # the engine's sandboxed WebView dialog (same UX as the CS client).
+          # The patch appends pfnShowMOTD/pfnIsMOTDDialogActive at the end of
+          # cl_enginefunc_t (ABI-safe) and calls the dialog from __MsgFunc_MOTD.
+          # Forward mode so an upstream reflow degrades to the text MOTD
+          # instead of breaking the build.
+          patch -d xash3d-fwgs-master/3rdparty/hlsdk-portable -p1 --forward \
+            < glue/hlsdk-portable-motd.patch || \
+            echo "::warning::hlsdk MOTD patch did not apply cleanly (upstream changed?); valve MOTD falls back to HUD text"
+
           TC="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
           JNILIBS="$PWD/xash3d-fwgs-master/android/app/src/main/jniLibs"
 
@@ -126,10 +136,14 @@ jobs:
           find cs16-client-main/android/app/build/outputs/apk -name "*.apk" -exec cp -v {} dist/ \;
           cp out/cstrike-addons.zip dist/
           cp out/valve-addons.zip dist/
-          # unstripped native libs for debugging
-          find xash3d-fwgs-master/android/app/build/intermediates -name "libxash.so" -path "*strip*" 2>/dev/null | head -4 || true
-          find cs16-client-main/android/app/build -path "*obj*" -name "*.so" 2>/dev/null | head -20 || true
-          ls -la dist/
+          # unstripped native libs for debugging: with the v26 crash
+          # forensics (module + offset in crash.log) these allow mapping a
+          # crash straight to a function
+          find xash3d-fwgs-master/android/app/build cs16-client-main/android/app/build \
+            -type f \( -name "libxash.so" -o -name "libclient_android_*.so" -o -name "libhl_android_*.so" \
+               -o -name "libmetamod_android_*.so" -o -name "libmm_amxmodx.so" -o -name "libamxx_*.so" \) \
+            -not -path "*stripped*" 2>/dev/null | sort -u | while read -r f; do cp -v "$f" symbols/ || true; done
+          ls -la dist/ symbols/ | head -40
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
@@ -137,6 +151,13 @@ jobs:
           name: apks
           path: dist/*
           if-no-files-found: error
+
+      - name: Upload debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: symbols
+          path: symbols/*
+          if-no-files-found: ignore
 
       - name: Release (main branch only)
         if: github.ref == 'refs/heads/main'

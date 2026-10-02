@@ -8,6 +8,7 @@ import android.content.pm.ActivityInfo;
 import android.content.res.AssetManager;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
@@ -17,6 +18,7 @@ import android.os.Environment;
 import android.provider.Settings.Secure;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -30,6 +32,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -39,6 +42,7 @@ import su.xash.engine.util.CrashReports;
 import su.xash.engine.util.SoftKeyboardPan;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.Arrays;
@@ -340,59 +344,118 @@ public class XashActivity extends SDLActivity {
                         FrameLayout root = new FrameLayout( this );
                         root.setBackgroundColor( 0x44000000 );
 
-                        // panel sized like the in-game team select menu, centred
                         DisplayMetrics dm = getResources().getDisplayMetrics();
-                        int panelW = ( int )( dm.widthPixels * 0.56f );
-                        int panelH = ( int )( dm.heightPixels * 0.84f );
+                        int screenW = dm.widthPixels;
+                        int screenH = dm.heightPixels;
 
+                        // v26: window geometry comes from the game's own
+                        // resource/UI/MOTD.res (PC CS 1.6 VGUI layout, 640x480
+                        // coordinate space), so a custom server UI keeps the
+                        // exact window it designed for PC. Scaled by screen
+                        // height like CS does for widescreen; falls back to
+                        // the PC default window when the .res is absent.
+                        MotdLayout lay = parseMotdRes( gameDir );
+                        float scale = screenH / 480f;
+                        int panelW = Math.round( lay.frameW * scale );
+                        int panelH = Math.round( lay.frameH * scale );
+
+                        if ( panelW > Math.round( screenW * 0.92f ))
+                        {
+                                scale = ( screenW * 0.92f ) / lay.frameW;
+                                panelW = Math.round( lay.frameW * scale );
+                                panelH = Math.round( lay.frameH * scale );
+                        }
+
+                        // --- the window: dark body, thin gold border (PC VGUI frame) ---
                         LinearLayout panel = new LinearLayout( this );
                         panel.setOrientation( LinearLayout.VERTICAL );
-                        panel.setBackgroundColor( 0xB8000000 );
+                        panel.setBackground( makeMOTDPanelBackground() );
                         FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams( panelW, panelH );
                         panelLp.gravity = Gravity.CENTER;
                         root.addView( panel, panelLp );
 
-                        // --- header: gold title + thin gold separator, like the team menu ---
+                        // --- header: gold counter logo in the left corner + title ---
+                        int headerH = Math.max( dp( 52 ), Math.round( lay.contentY * scale ));
+
+                        ImageView logo = new ImageView( this );
+                        logo.setImageResource( R.drawable.cs_logo );
+                        logo.setScaleType( ImageView.ScaleType.FIT_CENTER );
+                        int logoSize = Math.round( headerH * 0.74f );
+
                         TextView title = new TextView( this );
                         title.setText( "MESSAGE OF THE DAY" );
                         title.setTextColor( MOTD_GOLD );
-                        title.setTextSize( 18 );
+                        title.setTextSize( TypedValue.COMPLEX_UNIT_SP,
+                                Math.max( 17, Math.round(( headerH * 0.36f ) / dm.density )));
                         title.setTypeface( Typeface.DEFAULT_BOLD );
                         title.setLetterSpacing( 0.08f );
                         title.setSingleLine( true );
-                        title.setPadding( dp( 14 ), dp( 10 ), dp( 14 ), dp( 8 ) );
-                        panel.addView( title, new LinearLayout.LayoutParams(
-                                        ViewGroup.LayoutParams.MATCH_PARENT,
-                                        ViewGroup.LayoutParams.WRAP_CONTENT ) );
+                        title.setGravity( Gravity.CENTER_VERTICAL );
+
+                        LinearLayout header = new LinearLayout( this );
+                        header.setOrientation( LinearLayout.HORIZONTAL );
+                        header.setGravity( Gravity.CENTER_VERTICAL | Gravity.START );
+                        header.setPadding( dp( 12 ), dp( 6 ), dp( 12 ), dp( 6 ));
+                        header.addView( logo, new LinearLayout.LayoutParams( logoSize, logoSize ));
+
+                        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
+                                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                                        ViewGroup.LayoutParams.MATCH_PARENT );
+                        titleLp.setMargins( dp( 10 ), 0, 0, 0 );
+                        header.addView( title, titleLp );
+                        panel.addView( header, new LinearLayout.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT, headerH ));
 
                         View separator = new View( this );
                         separator.setBackgroundColor( MOTD_GOLD );
                         panel.addView( separator, new LinearLayout.LayoutParams(
-                                        ViewGroup.LayoutParams.MATCH_PARENT, Math.max( 1, dp( 1 )) ) );
+                                        ViewGroup.LayoutParams.MATCH_PARENT, Math.max( 1, dp( 1 )) ));
+
+                        // --- body column: the content inset and the OK button
+                        // share the same left/right edges, exactly like the
+                        // PC CS 1.6 MOTD window ---
+                        int bodyW = Math.round( lay.contentW * scale );
+                        if ( bodyW > panelW - dp( 16 ))
+                                bodyW = panelW - dp( 16 );
+
+                        LinearLayout body = new LinearLayout( this );
+                        body.setOrientation( LinearLayout.VERTICAL );
+                        LinearLayout.LayoutParams bodyLp = new LinearLayout.LayoutParams(
+                                        bodyW, ViewGroup.LayoutParams.MATCH_PARENT );
+                        bodyLp.gravity = Gravity.CENTER_HORIZONTAL;
+                        panel.addView( body, bodyLp );
 
                         // --- content: sandboxed WebView on a solid black inset ---
                         WebView wv = createMOTDWebView( gameDir );
                         wv.setBackgroundColor( 0xFF000000 );
                         wv.loadDataWithBaseURL( "https://motd.local/", buildMOTDDocument( raw ),
                                         "text/html", "utf-8", null );
-                        LinearLayout.LayoutParams wvLp = new LinearLayout.LayoutParams(
-                                        ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f );
-                        wvLp.setMargins( dp( 12 ), dp( 10 ), dp( 12 ), dp( 6 ) );
-                        panel.addView( wv, wvLp );
 
-                        // --- footer: OK button in the bottom-left, like the PC CS 1.6 window ---
+                        FrameLayout content = new FrameLayout( this );
+                        content.setBackgroundColor( 0xFF000000 );
+                        int edge = Math.max( 1, dp( 1 ));
+                        content.setPadding( edge, edge, edge, edge );
+                        content.addView( wv, new FrameLayout.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                        ViewGroup.LayoutParams.MATCH_PARENT ));
+
+                        LinearLayout.LayoutParams contentLp = new LinearLayout.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f );
+                        contentLp.setMargins( 0, dp( 10 ), 0, 0 );
+                        body.addView( content, contentLp );
+
+                        // --- footer: wide flat OK button in the bottom-left ---
                         Button ok = new Button( this );
-                        ok.setText( "OK" );
+                        ok.setText(( lay.okLabel != null && !lay.okLabel.isEmpty()
+                                        && !lay.okLabel.startsWith( "#" )) ? lay.okLabel : "OK" );
                         ok.setAllCaps( false );
                         ok.setTextColor( MOTD_GOLD );
-                        ok.setTextSize( 14 );
+                        ok.setTextSize( TypedValue.COMPLEX_UNIT_SP, 17 );
                         ok.setTypeface( Typeface.DEFAULT_BOLD );
                         ok.setBackground( makeMOTDButtonBackground() );
                         ok.setStateListAnimator( null );
                         ok.setElevation( 0f );
-                        ok.setMinWidth( dp( 120 ) );
-                        ok.setMinHeight( dp( 30 ) );
-                        ok.setPadding( dp( 24 ), dp( 4 ), dp( 24 ), dp( 4 ) );
+                        ok.setPadding( dp( 24 ), dp( 6 ), dp( 24 ), dp( 6 ));
                         ok.setOnClickListener( new View.OnClickListener() {
                                         @Override
                                         public void onClick( View v ) {
@@ -400,16 +463,19 @@ public class XashActivity extends SDLActivity {
                                         }
                         } );
 
+                        // PC proportions from MOTD.res, but at least 38% of the
+                        // content width and a touch-friendly height
+                        int okW = Math.max( Math.round( lay.okW * scale ), Math.round( bodyW * 0.38f ));
+                        int okH = Math.max( dp( 46 ), Math.round( lay.okH * scale ));
+
                         LinearLayout footer = new LinearLayout( this );
                         footer.setOrientation( LinearLayout.HORIZONTAL );
                         footer.setGravity( Gravity.START | Gravity.CENTER_VERTICAL );
-                        footer.setPadding( dp( 12 ), dp( 2 ), dp( 12 ), dp( 10 ) );
-                        footer.addView( ok, new LinearLayout.LayoutParams(
-                                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                                        ViewGroup.LayoutParams.WRAP_CONTENT ) );
-                        panel.addView( footer, new LinearLayout.LayoutParams(
+                        footer.setPadding( 0, dp( 10 ), 0, dp( 12 ));
+                        footer.addView( ok, new LinearLayout.LayoutParams( okW, okH ));
+                        body.addView( footer, new LinearLayout.LayoutParams(
                                         ViewGroup.LayoutParams.MATCH_PARENT,
-                                        ViewGroup.LayoutParams.WRAP_CONTENT ) );
+                                        ViewGroup.LayoutParams.WRAP_CONTENT ));
 
                         dialog.setContentView( root );
                         dialog.setOnDismissListener( new DialogInterface.OnDismissListener() {
@@ -458,6 +524,206 @@ public class XashActivity extends SDLActivity {
 
         private static String escapeMOTDHtml( String s ) {
                 return s.replace( "&", "&amp;" ).replace( "<", "&lt;" ).replace( ">", "&gt;" );
+        }
+
+        // =====================================================================
+        // v26: resource/UI/MOTD.res parsing (PC CS 1.6 VGUI layout). The file
+        // holds "block" { "key" "value" ... } pairs in a 640x480 coordinate
+        // space; we only take the geometry, colors stay in the game theme.
+        // =====================================================================
+        private static class MotdLayout {
+                int frameW = 512, frameH = 384;   // "MOTD" frame block
+                int contentY = 48;                // "MessageOfTheDay" ypos
+                int contentW = 480, contentH = 296;
+                int okW = 96, okH = 24;           // "OK" button block
+                String okLabel = null;
+        }
+
+        /** Locate resource/UI/MOTD.res in the game dir (case-insensitive,
+         *  Android filesystems are not). Returns null when absent. */
+        private static File findMotdRes( File gameDir ) {
+                try {
+                        File resDir = new File( gameDir, "resource" );
+                        if ( !resDir.isDirectory())
+                                return null;
+
+                        File uiDir = null;
+                        File[] children = resDir.listFiles();
+                        if ( children != null ) {
+                                for ( File c : children ) {
+                                        if ( c.isDirectory() && c.getName().equalsIgnoreCase( "UI" )) {
+                                                uiDir = c;
+                                                break;
+                                        }
+                                }
+                        }
+
+                        if ( uiDir == null || !uiDir.isDirectory())
+                                return null;
+
+                        File[] files = uiDir.listFiles();
+                        if ( files == null )
+                                return null;
+
+                        for ( File f : files ) {
+                                if ( f.isFile() && f.getName().equalsIgnoreCase( "MOTD.res" ))
+                                        return f;
+                        }
+                } catch ( Throwable t ) {
+                        // fall through
+                }
+                return null;
+        }
+
+        private static MotdLayout parseMotdRes( File gameDir ) {
+                MotdLayout lay = new MotdLayout();
+                File res = findMotdRes( gameDir );
+
+                try {
+                        if ( res == null )
+                                return lay;
+
+                        byte[] bytes = readMotdResFile( res );
+                        if ( bytes == null )
+                                return lay;
+
+                        String text = stripResComments( new String( bytes, "ISO-8859-1" ));
+
+                        int i = 0, n = text.length();
+                        String block = null;
+                        String pending = null;
+
+                        while ( i < n ) {
+                                char c = text.charAt( i );
+
+                                if ( Character.isWhitespace( c )) {
+                                        i++;
+                                        continue;
+                                }
+
+                                if ( c == '{' ) {
+                                        block = pending; // pending quoted token names this block
+                                        pending = null;
+                                        i++;
+                                        continue;
+                                }
+
+                                if ( c == '}' ) {
+                                        block = null;
+                                        pending = null;
+                                        i++;
+                                        continue;
+                                }
+
+                                if ( c == '"' ) {
+                                        int close = text.indexOf( '"', i + 1 );
+                                        if ( close < 0 )
+                                                break;
+
+                                        String tok = text.substring( i + 1, close );
+                                        i = close + 1;
+
+                                        if ( pending != null ) {
+                                                applyMotdKey( lay, block, pending, tok );
+                                                pending = null;
+                                        } else {
+                                                pending = tok;
+                                        }
+                                        continue;
+                                }
+
+                                // unquoted token: skip to the next separator
+                                int j = i;
+                                while ( j < n && !Character.isWhitespace( text.charAt( j ))
+                                        && text.charAt( j ) != '{' && text.charAt( j ) != '}' )
+                                        j++;
+                                i = ( j == i ) ? i + 1 : j;
+                        }
+                } catch ( Throwable t ) {
+                        Log.w( TAG, "parseMotdRes failed", t );
+                }
+
+                return lay;
+        }
+
+        private static void applyMotdKey( MotdLayout lay, String block, String key, String value ) {
+                if ( block == null )
+                        return;
+
+                String b = block.toLowerCase( Locale.US );
+                String k = key.toLowerCase( Locale.US );
+
+                int v;
+                try {
+                        v = Integer.parseInt( value.trim());
+                } catch ( NumberFormatException e ) {
+                        if ( k.equals( "labeltext" ) && b.equals( "ok" ))
+                                lay.okLabel = value;
+                        return;
+                }
+
+                if ( b.equals( "motd" )) {
+                        if ( k.equals( "wide" )) lay.frameW = v;
+                        else if ( k.equals( "tall" )) lay.frameH = v;
+                } else if ( b.equals( "messageoftheday" )) {
+                        if ( k.equals( "ypos" )) lay.contentY = v;
+                        else if ( k.equals( "wide" )) lay.contentW = v;
+                        else if ( k.equals( "tall" )) lay.contentH = v;
+                } else if ( b.equals( "ok" )) {
+                        if ( k.equals( "wide" )) lay.okW = v;
+                        else if ( k.equals( "tall" )) lay.okH = v;
+                }
+        }
+
+        private static String stripResComments( String s ) {
+                StringBuilder out = new StringBuilder( s.length());
+                int i = 0, n = s.length();
+
+                while ( i < n ) {
+                        if ( i + 1 < n && s.charAt( i ) == '/' && s.charAt( i + 1 ) == '/' ) {
+                                while ( i < n && s.charAt( i ) != '\n' ) i++;
+                        } else if ( i + 1 < n && s.charAt( i ) == '/' && s.charAt( i + 1 ) == '*' ) {
+                                i += 2;
+                                while ( i + 1 < n && !( s.charAt( i ) == '*' && s.charAt( i + 1 ) == '/' )) i++;
+                                i += 2;
+                        } else {
+                                out.append( s.charAt( i ));
+                                i++;
+                        }
+                }
+
+                return out.toString();
+        }
+
+        private static byte[] readMotdResFile( File f ) {
+                FileInputStream in = null;
+                try {
+                        long len = f.length();
+                        if ( len <= 0 || len > 262144 )
+                                return null;
+
+                        in = new FileInputStream( f );
+                        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                        byte[] buf = new byte[8192];
+                        int r;
+                        while (( r = in.read( buf )) > 0 )
+                                bos.write( buf, 0, r );
+                        return bos.toByteArray();
+                } catch ( Throwable t ) {
+                        return null;
+                } finally {
+                        if ( in != null ) {
+                                try { in.close(); } catch ( Throwable ignored ) {}
+                        }
+                }
+        }
+
+        /** v26: window frame: dark body with a thin gold border (PC VGUI look). */
+        private Drawable makeMOTDPanelBackground() {
+                GradientDrawable d = new GradientDrawable();
+                d.setColor( 0xB8000000 );
+                d.setStroke( Math.max( 1, dp( 1 )), MOTD_GOLD );
+                return d;
         }
 
         /** v25: VGUI-style OK button: dark body, thin gold border, gold text. */
