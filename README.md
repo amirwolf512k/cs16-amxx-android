@@ -64,11 +64,12 @@ Modules (arm64 + armv7a): amxmodx, engine, fun, fakemeta, cstrike, csx, nvault, 
 
 - Full AMX Mod X + Metamod chain running inside the game on Android, with an on-device `.sma` compiler (`libamxxpc`).
 - 13 AMXX modules for ARM64 + ARMv7, including hand-built hamsandwich ARM trampolines and regex/geoip/json/sqlite.
-- **HTML MOTD like PC**: rendered in a sandboxed WebView dialog with an **OK button at the bottom** (covers `motd.txt` and `/top15`), with a plain-text fallback if the dialog can't be shown; complete `motd.txt` sample included in both packages.
-- **Spray logo done right**: `logos/<cl_logofile>.bmp` loaded from the `logos/` folder (no forced default), shipped `AmirWolf512.bmp`, converted to a full-color WAD3 tempdecal — the old gradient path that tinted the whole logo monochrome is gone.
+- **HTML MOTD like PC**: rendered in a sandboxed WebView dialog with an **OK button at the bottom** (covers `motd.txt` and `/top15`), with a plain-text fallback if the dialog can't be shown; the team select menu now appears only **after** the MOTD is closed, exactly like PC; complete `motd.txt` sample included in both packages.
+- **Spray logo done right**: `logos/<cl_logofile>` loaded from the `logos/` folder (no forced default); `AmirWolf512` ships as a **PNG** like the built-in neocat/fwgs/blobfox/neofox logos, so the spray color option can no longer tint it (BMP logos stay colorable); indexed logos also pack as full-color WAD3 decals instead of the old monochrome gradient.
 - **Voice privacy**: the microphone opens only while `+voicerecord` is held (no permanent "sending voice" indicator).
-- **Server browser**: `Xash | Gold | Favorites | History` tabs — the Gold list is queried from the Valve GoldSrc master server (`hl1master.steamcontent.com`), the same internet list PC CS 1.6 uses.
+- **Server browser**: `Xash | Gold | Favorites | History` tabs — the Gold list queries live community GoldSrc master servers (`ms1.cs-exes.ru`, `valve-master-server.com`, `ms2.cs-best.org.ua`, `ms.cs16.net`) with the real A2M protocol, since Valve shut their master down; hundreds of CS 1.6 servers show up.
 - English console credit banner.
+- `top15` / `rank` also work in chat **without the slash** on the bundled server (easier on a phone keyboard).
 - Auto-updating versioned addons installer, crash-proof Android assets JNI, LP64-safe AMX virtual machine, automatic CI tests on a real arm64 emulator.
 
 ---

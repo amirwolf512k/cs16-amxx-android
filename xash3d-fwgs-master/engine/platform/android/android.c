@@ -37,6 +37,10 @@ struct jnimethods_s
 	jmethodID showMOTD; // cs16-amxx-android v20: sandboxed HTML MOTD dialog
 } jni;
 
+// cs16-amxx-android v24: dialog visibility state so the client dll can
+// hold back the team select menu until the user presses OK (like PC CS).
+static qboolean g_motd_dialog_open = false;
+
 void Android_Init( void )
 {
 	memset( &jni, 0, sizeof( jni ));
@@ -144,6 +148,9 @@ qboolean Android_ShowMOTD( const char *html )
 	shown = (*jni.env)->CallBooleanMethod( jni.env, jni.activity, jni.showMOTD, jbytes );
 	(*jni.env)->DeleteLocalRef( jni.env, jbytes );
 
+	if( shown )
+		g_motd_dialog_open = true; // v24
+
 	// v21: showMOTD catches Throwable internally, but never leave a
 	// pending exception behind just in case
 	if( (*jni.env)->ExceptionCheck( jni.env ))
@@ -153,6 +160,26 @@ qboolean Android_ShowMOTD( const char *html )
 	}
 
 	return shown ? true : false;
+}
+
+qboolean Android_IsMOTDDialogOpen( void )
+{
+	return g_motd_dialog_open;
+}
+
+void Android_MOTDDialogClosed( void )
+{
+	g_motd_dialog_open = false;
+}
+
+// called by XashActivity when the MOTD dialog is dismissed (OK button,
+// cancel or back button). Static native resolved by symbol lookup in
+// the loaded native libraries.
+JNIEXPORT void JNICALL Java_su_xash_engine_XashActivity_nativeMOTDClosed( JNIEnv *env, jclass clazz )
+{
+	(void)env;
+	(void)clazz;
+	Android_MOTDDialogClosed();
 }
 
 /*

@@ -2882,11 +2882,12 @@ static void CL_ConnectionlessPacket( netadr_t from, sizebuf_t *msg )
 	MSG_Clear( msg );
 	MSG_ReadLong( msg ); // skip the -1
 
-	// cs16-amxx-android v23 fix: the Valve GoldSrc master (hl1master)
-	// answers "-1 \r\n [\r\n] <ip:port list>" - there is no "f" line like
-	// the Xash master sends, so the string dispatch below never matched
-	// and such replies were silently dropped (Gold tab stayed empty).
-	// Route replies from known GoldSrc masters straight to the parser.
+	// cs16-amxx-android v24 fix: community GoldSrc masters answer
+	// "-1 <OOB> f\n <ip:port list>" (sometimes with CRLF). The v23 router
+	// only skipped CR/LF, so the 'f' reply marker was misparsed as the
+	// first address byte and the whole list corrupted. Skip the 'f'
+	// header (only when followed by a newline, so real addresses that
+	// happen to start with 0x66 are left alone), then CR/LF, then parse.
 	{
 		connprotocol_t mproto;
 
@@ -2894,6 +2895,13 @@ static void CL_ConnectionlessPacket( netadr_t from, sizebuf_t *msg )
 		{
 			const byte *raw = (const byte *)msg->pData;
 			int skip = 0;
+
+			if( MSG_GetNumBytesLeft( msg ) >= 6 &&
+				raw[4] == 'f' && ( raw[5] == '\n' || raw[5] == '\r' ))
+			{
+				MSG_ReadByte( msg );
+				skip++;
+			}
 
 			while( skip < 4 )
 			{

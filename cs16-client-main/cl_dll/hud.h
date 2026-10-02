@@ -549,6 +549,8 @@ public:
 	int m_bitsValidSlots;
 	float m_flShutoffTime;
 	int m_fWaitingForMore;
+	// cs16-amxx-android v24: team menu deferred while the MOTD dialog is open
+	int m_iPendingVGUIMenu;
 
 };
 

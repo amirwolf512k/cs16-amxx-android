@@ -3784,6 +3784,23 @@ static int GAME_EXPORT pfnShowMOTD( const char *html )
 	return false;
 }
 
+/*
+=============
+pfnIsMOTDDialogActive
+
+cs16-amxx-android v24: lets the client dll know the platform MOTD
+dialog is still on screen so it can delay the team select menu.
+=============
+*/
+static int GAME_EXPORT pfnIsMOTDDialogActive( void )
+{
+#if XASH_ANDROID
+	return Android_IsMOTDDialogOpen();
+#else
+	return false;
+#endif
+}
+
 static cl_enginefunc_t gEngfuncs =
 {
 	pfnSPR_Load,
@@ -3921,7 +3938,8 @@ static cl_enginefunc_t gEngfuncs =
 	Cmd_AliasGetList,
 	pfnVguiWrap2_GetMouseDelta,
 	pfnFilteredClientCmd,
-	pfnShowMOTD
+	pfnShowMOTD,
+	pfnIsMOTDDialogActive
 };
 
 void CL_UnloadProgs( void )

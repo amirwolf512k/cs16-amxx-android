@@ -28,6 +28,12 @@
     java.lang.String[] getAssetsList(boolean, java.lang.String);
     android.content.res.AssetManager getAssets(boolean);
     boolean showMOTD(byte[]);
+    void nativeMOTDClosed();
+}
+
+# v24: never rename static native callbacks (resolved by JNI symbol lookup)
+-keepclasseswithmembernames class su.xash.engine.XashActivity {
+    native <methods>;
 }
 
 -keep,includedescriptorclasses,allowoptimization class org.libsdl.app.SDLInputConnection {

@@ -314,6 +314,11 @@ typedef struct cl_enginefuncs_s
 	// fallback. Client dlls that don't know this field simply copy a
 	// smaller struct, so appending here is ABI-safe.
 	int	(*pfnShowMOTD)( const char *html );
+
+	// cs16-amxx-android v24: true while the platform MOTD dialog is on
+	// screen. The client dll uses it to hold the team select menu back
+	// until the user closes the MOTD (PC CS 1.6 behaviour).
+	int	(*pfnIsMOTDDialogActive)( void );
 } cl_enginefunc_t;
 
 #define CLDLL_INTERFACE_VERSION	7

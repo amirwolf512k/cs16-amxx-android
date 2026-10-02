@@ -202,6 +202,18 @@ public plugin_init()
 	register_clcmd("say_team /stats", "cmdStats", 0, "- display players stats (menu/MOTD)")
 	register_clcmd("say_team /switch", "cmdSwitch", 0, "- switch client's stats on or off")
 
+	// cs16-amxx-android v24: no-slash chat aliases. Typing "/" on a phone
+	// keyboard is a pain, so the bundled server also accepts the plain
+	// words for the MOTD/rank commands (kept to the unambiguous ones so
+	// ordinary chat like "me" or "hp" still goes to chat).
+	register_clcmd("say top15", "cmdTop15", 0, "- display top 15 players (MOTD)")
+	register_clcmd("say rank", "cmdRank", 0, "- display your rank (chat)")
+	register_clcmd("say rankstats", "cmdRankStats", 0, "- display your server stats (MOTD)")
+	register_clcmd("say statsme", "cmdStatsMe", 0, "- display your stats (MOTD)")
+	register_clcmd("say stats", "cmdStats", 0, "- display players stats (menu/MOTD)")
+	register_clcmd("say_team top15", "cmdTop15", 0, "- display top 15 players (MOTD)")
+	register_clcmd("say_team rank", "cmdRank", 0, "- display your rank (chat)")
+
 	// Register menus.
 	register_menucmd(register_menuid("Server Stats"), 1023, "actionStatsMenu")
 

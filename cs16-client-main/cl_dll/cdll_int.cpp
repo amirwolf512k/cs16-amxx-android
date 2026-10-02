@@ -346,6 +346,18 @@ Called by engine every frame that client .dll is loaded
 
 void DLLEXPORT HUD_Frame( double time )
 {
+	// cs16-amxx-android v24: once the MOTD dialog is closed, show the
+	// team select menu that was held back by ShowVGUIMenu.
+	if( gHUD.m_Menu.m_iPendingVGUIMenu )
+	{
+		if( !gEngfuncs.pfnIsMOTDDialogActive || !gEngfuncs.pfnIsMOTDDialogActive())
+		{
+			int pending = gHUD.m_Menu.m_iPendingVGUIMenu;
+			gHUD.m_Menu.m_iPendingVGUIMenu = 0;
+			gHUD.m_Menu.ShowVGUIMenu( pending );
+		}
+	}
+
 #ifdef _CS16CLIENT_ENABLE_GSRC_SUPPORT
 	gEngfuncs.VGui_ViewportPaintBackground(HUD_GetRect());
 #endif

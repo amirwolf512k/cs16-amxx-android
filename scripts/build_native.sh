@@ -48,7 +48,7 @@ mkdir -p "$CS16/assets"
 cp -r cs16-client-main/3rdparty/cs16client-extras/. "$CS16/assets/"
 rm -rf "$CS16/assets/addons"   # never ship the extracted dir, only the zip
 cp out/cstrike-addons.zip "$CS16/assets/addons.zip"
-echo "amxx-v23-repo" > "$CS16/assets/addons_version.txt"
+echo "amxx-v24-repo" > "$CS16/assets/addons_version.txt"
 
 # ---- engine jniLibs: libamxxpc (SMA compiler executable, packaged as
 # ---- lib*.so so Android allows exec from nativeLibraryDir)

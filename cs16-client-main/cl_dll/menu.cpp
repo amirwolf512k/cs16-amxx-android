@@ -55,6 +55,7 @@ int CHudMenu :: Init( void )
 	HOOK_COMMAND( gHUD.m_Menu, "showvguimenu", ShowVGUIMenu );
 
 	_extended_menus = CVAR_CREATE("_extended_menus", "1", FCVAR_ARCHIVE);
+	m_iPendingVGUIMenu = 0; // cs16-amxx-android v24
 
 	InitHUDData();
 
@@ -273,6 +274,15 @@ void CHudMenu::UserCmd_OldStyleMenuClose()
 
 void CHudMenu::ShowVGUIMenu( int menuType )
 {
+	// cs16-amxx-android v24: PC CS 1.6 behaviour - while the HTML MOTD
+	// window is on screen, hold the team select menu back and show it
+	// right after the user presses OK (see HUD_Frame).
+	if( menuType == MENU_TEAM && gEngfuncs.pfnIsMOTDDialogActive && gEngfuncs.pfnIsMOTDDialogActive())
+	{
+		m_iPendingVGUIMenu = menuType;
+		return;
+	}
+
 	int team = g_PlayerExtraInfo[gHUD.m_Scoreboard.m_iPlayerNum].teamnumber;
 	int haveCancel = team != TEAM_UNASSIGNED ? 1 : 0;
 

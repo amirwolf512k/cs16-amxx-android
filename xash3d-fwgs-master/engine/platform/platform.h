@@ -103,6 +103,8 @@ void *Android_GetNativeObject( const char *name );
 int Android_GetKeyboardHeight( void );
 void Android_Shutdown( void );
 qboolean Android_ShowMOTD( const char *html ); // v22: returns false when the dialog could not be shown
+qboolean Android_IsMOTDDialogOpen( void ); // cs16-amxx-android v24: true while the MOTD dialog is on screen
+void Android_MOTDDialogClosed( void ); // cs16-amxx-android v24: called from Java when the dialog is dismissed
 #endif
 
 #if XASH_WIN32

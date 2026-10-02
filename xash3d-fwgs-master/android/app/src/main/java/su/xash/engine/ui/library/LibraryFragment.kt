@@ -34,6 +34,9 @@ class LibraryFragment : Fragment(), MenuProvider {
 	private var _binding: FragmentLibraryBinding? = null
 	private val binding get() = _binding!!
 
+	// v23/v24: show the blocking storage dialog at most once per session
+	private var promptedForStorage = false
+
 	private val libraryViewModel: LibraryViewModel by activityViewModels()
 
 	private val startActivityForResult =
@@ -159,11 +162,11 @@ class LibraryFragment : Fragment(), MenuProvider {
 			(binding.gamesList.adapter as GameAdapter).submitList(it)
 		}
 
-	if (!checkStoragePermissions(prompt = !promptedForStorage)) {
-		promptedForStorage = true
-	} else {
-		libraryViewModel.reloadGames(requireContext())
-	}
+		if (!checkStoragePermissions(prompt = !promptedForStorage)) {
+			promptedForStorage = true
+		} else {
+			libraryViewModel.reloadGames(requireContext())
+		}
 	}
 
 	override fun onDestroyView() {
@@ -188,10 +191,10 @@ class LibraryFragment : Fragment(), MenuProvider {
 	override fun onResume() {
 		super.onResume()
 
-	if (!checkStoragePermissions(prompt = !promptedForStorage)) {
-		promptedForStorage = true
-	} else {
-		libraryViewModel.reloadGames(requireContext())
-	}
+		if (!checkStoragePermissions(prompt = !promptedForStorage)) {
+			promptedForStorage = true
+		} else {
+			libraryViewModel.reloadGames(requireContext())
+		}
 	}
 }

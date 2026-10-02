@@ -259,6 +259,19 @@ public class XashActivity extends SDLActivity {
 	// JavaScript, DOM storage, content:// or network access at all.
 	// =====================================================================
 
+	// cs16-amxx-android v24: implemented in the engine (libxash.so); tells
+	// the client dll the MOTD dialog is gone so it can show the deferred
+	// team select menu (PC CS 1.6 behaviour). Name kept by proguard.
+	private static native void nativeMOTDClosed();
+
+	private static void notifyMOTDClosed() {
+		try {
+			nativeMOTDClosed();
+		} catch ( Throwable t ) {
+			Log.w( TAG, "nativeMOTDClosed failed", t );
+		}
+	}
+
 	/** Called from native (JNI) when a client MOTD contains HTML.
 	 *  v22: runs the dialog creation synchronously on the UI thread and
 	 *  returns whether the dialog is actually on screen, so the client dll
@@ -365,6 +378,7 @@ public class XashActivity extends SDLActivity {
 				@Override
 				public void onDismiss( DialogInterface d ) {
 					mMotdDialog = null;
+					notifyMOTDClosed();
 				}
 			} );
 

@@ -55,6 +55,27 @@ static CVAR_DEFINE_AUTO( sv_verbose_heartbeats, "0", 0, "print every heartbeat t
 #define RESOLVE_EXPIRE_SECONDS          (60.0f)  // positive cache: 1 minute
 #define NEGATIVE_RESOLVE_EXPIRE_SECONDS (300.0f) // negative cache: 5 minutes
 
+// cs16-amxx-android v24: build a real GoldSrc master scan request
+// (A2M_GETSERVERS2): region byte '1', the 0xFFFFFFFF challenge, then the
+// backslash filter with the game folder. Community hl1master restorations
+// answer this with the classic OOB "f\n" + ip:port list (verified live).
+static size_t NET_BuildGoldSrcMasterScanRequest( char *buf, size_t size, const char *gamedir )
+{
+	size_t len = 0;
+
+	if( !buf || size < 32 )
+		return 0;
+
+	buf[len++] = '1'; // A2M_GETSERVERS2
+	memset( buf + len, 0xff, 4 ); // challenge, first try
+	len += 4;
+
+	Q_snprintf( buf + len, size - len, "\\gamedir\\%s", gamedir );
+	len += Q_strlen( buf + len ) + 1; // include the terminating NUL
+
+	return len;
+}
+
 static size_t NET_BuildMasterServerScanRequest( char *buf, size_t size, uint32_t key, qboolean nat, const char *filter, connprotocol_t proto )
 {
 	// TODO: pagination and region
@@ -166,21 +187,13 @@ static qboolean NET_SendToMasters( netsrc_t sock, size_t len, const void *data, 
 		case NET_EAI_OK:
 			master->sent = true;
 
-			if( proto == PROTO_GOLDSRC )
-			{
-				// cs16-amxx-android v23 fix: the Valve GoldSrc master
-				// requires the 0xFFFFFFFF connectionless header; only the
-				// Xash master tolerates its absence
-				byte oob[516];
-
-				oob[0] = oob[1] = oob[2] = oob[3] = 0xff;
-				memcpy( oob + 4, data, len );
-				NET_SendPacket( sock, len + 4, oob, master->adr );
-			}
-			else
-			{
-				NET_SendPacket( sock, len, data, master->adr );
-			}
+			// cs16-amxx-android v24 fix: GoldSrc masters (community
+			// restorations of hl1master) expect the raw A2M_GETSERVERS2
+			// packet WITHOUT the 0xFFFFFFFF connectionless prefix - the
+			// prefix makes several of them silently drop the query
+			// (verified against live masters); the Xash master is
+			// tolerant either way, so always send raw here
+			NET_SendPacket( sock, len, data, master->adr );
 			break;
 		}
 	}
@@ -345,9 +358,10 @@ qboolean NET_MasterQuery( uint32_t key, qboolean nat, const char *filter )
 	qboolean wait = NET_SendToMasters( NS_CLIENT, len, buf, PROTO_CURRENT );
 
 	// goldsrc don't have nat traversal extensions
+	// cs16-amxx-android v24: use the real GoldSrc A2M request here
 	if( !nat )
 	{
-		len = NET_BuildMasterServerScanRequest( buf, sizeof( buf ), 0, false, filter, PROTO_GOLDSRC );
+		len = NET_BuildGoldSrcMasterScanRequest( buf, sizeof( buf ), GI->gamefolder );
 		wait |= NET_SendToMasters( NS_CLIENT, len, buf, PROTO_GOLDSRC );
 	}
 
@@ -788,14 +802,29 @@ void NET_InitMasters( void )
 	// FIXME: https raw.githubcontent source
 	// FIXME: cloudflare'd sources both HTTP and HTTPS
 
-	// cs16-amxx-android v22: query the original Valve GoldSrc master so
-	// real CS 1.6 servers appear in the client's "Gold" browser tab.
-	// Not marked save, so it is never persisted into xashcomm.lst.
+	// cs16-amxx-android v24: Valve shut the original GoldSrc master down
+	// (hl1master.steamcontent.com no longer resolves), so the Gold tab was
+	// always empty. Query live community hl1master restorations instead
+	// (addresses probed live; ms.cs16.net is the default master of
+	// cs16-masterservers-restored). Not marked save, so they are never
+	// persisted into xashcomm.lst.
 	{
-		master_t *gs_master = NET_AddMaster( "hl1master.steamcontent.com:27010" );
+		static const char *const gs_masters[] =
+		{
+			"ms1.cs-exes.ru:27010",
+			"valve-master-server.com:27010",
+			"ms2.cs-best.org.ua:27010",
+			"ms.cs16.net:27010",
+		};
+		int i;
 
-		if( gs_master )
-			gs_master->gs = true;
+		for( i = 0; i < ( int )( sizeof( gs_masters ) / sizeof( gs_masters[0] )); i++ )
+		{
+			master_t *gs_master = NET_AddMaster( gs_masters[i] );
+
+			if( gs_master )
+				gs_master->gs = true;
+		}
 	}
 
 	NET_LoadMasters();

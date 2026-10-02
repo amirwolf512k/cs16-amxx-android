@@ -355,6 +355,7 @@ typedef cmdalias_t*				(*pfnEngSrc_pfnGetAliases_t)		( void );
 typedef void					(*pfnEngSrc_pfnVguiWrap2_GetMouseDelta_t) ( int *x, int *y );
 typedef int							(*pfnEngSrc_pfnFilteredClientCmd_t) 	( char *szCmdString );
 typedef int							(*pfnEngSrc_pfnShowMOTD_t) 	( const char *html ); // v22: returns true when the dialog is shown
+typedef int							(*pfnEngSrc_pfnIsMOTDDialogActive_t) ( void ); // v24: dialog on screen?
 
 // Pointers to the exported engine functions themselves
 typedef struct cl_enginefuncs_s
@@ -497,6 +498,8 @@ typedef struct cl_enginefuncs_s
 	// cs16-amxx-android v20: sandboxed HTML MOTD dialog (Android WebView).
 	// Must stay the LAST field and mirror engine/cdll_int.h exactly.
 	pfnEngSrc_pfnShowMOTD_t				pfnShowMOTD;
+	// cs16-amxx-android v24: true while the platform MOTD dialog is open.
+	pfnEngSrc_pfnIsMOTDDialogActive_t	pfnIsMOTDDialogActive;
 } cl_enginefunc_t;
 
 // Function type declarations for engine destination functions
