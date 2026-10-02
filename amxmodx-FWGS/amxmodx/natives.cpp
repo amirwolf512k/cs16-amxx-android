@@ -10,6 +10,7 @@
 #include "amxmodx.h"
 #include "sh_stack.h"
 #include "natives.h"
+#include "amxx_dyna_codegen.h"
 #include "debugger.h"
 #include "libraries.h"
 #include "format.h"
@@ -58,48 +59,17 @@ extern "C" int amxx_DynaFunc(AMX *amx, cell *params)
 
 #if !defined(USE_LIBFFCALL) && (defined(__aarch64__) || defined(__arm__) || defined(__x86_64__) || defined(__i386__))
 // trampolines: dispatch (amx, params) -> amxx_DynaCallback(id, amx, params)
+// The instruction sequences live in amxx_dyna_codegen.h (dependency-free)
+// so the arm64 CI test compiles the exact bytes shipped in this library.
 int amxx_DynaCallback(int idx, AMX *amx, cell *params);
 extern "C" int amxx_DynaCodesize()
 {
-#if defined(__x86_64__)
-        return 32; // mov rdx,rsi + mov rsi,rdi + mov edi,id + movabs rax + jmp rax
-#else
-        return 28; // 5 instructions + 8-byte literal, rounded
-#endif
+	return amxx_dyna_codesize();
 }
 
 extern "C" void amxx_DynaMake(char *pfn, int id)
 {
-#if defined(__aarch64__)
-        uint32_t *code = (uint32_t *)pfn;
-        const uintptr_t gate = (uintptr_t)&amxx_DynaCallback;
-        code[0] = 0xAA0103E2;                       // mov x2, x1   (params)
-        code[1] = 0xAA0003E1;                       // mov x1, x0   (amx)
-        code[2] = 0xD2800000 | (((uint32_t)id & 0xFFFF) << 5); // movz x0, #id
-        code[3] = 0x58000031;                       // ldr x17, [pc, #8]
-        code[4] = 0xD61F0220;                       // br x17
-        *(uintptr_t *)(void *)&code[5] = gate;      // .quad gate
-#elif defined(__x86_64__)
-        // SysV: trampoline receives (amx=rdi, params=rsi); target needs (id=edi, amx=rsi, params=rdx)
-        uint8_t *c = (uint8_t *)pfn;
-        int o = 0;
-        c[o++] = 0x48; c[o++] = 0x89; c[o++] = 0xF2;            // mov rdx, rsi  (params)
-        c[o++] = 0x48; c[o++] = 0x89; c[o++] = 0xFE;            // mov rsi, rdi  (amx)
-        c[o++] = 0xBF;                                          // mov edi, id
-        *(uint32_t *)(void *)(c + o) = (uint32_t)id; o += 4;
-        c[o++] = 0x48; c[o++] = 0xB8;                           // movabs rax, gate
-        *(uintptr_t *)(void *)(c + o) = (uintptr_t)&amxx_DynaCallback; o += 8;
-        c[o++] = 0xFF; c[o++] = 0xE0;                           // jmp rax
-#else /* __arm__ */
-        uint32_t *code = (uint32_t *)pfn;
-        const uintptr_t gate = (uintptr_t)&amxx_DynaCallback;
-        code[0] = 0xE1A03000;                       // mov r3, r0   (amx)
-        code[1] = 0xE1A02001;                       // mov r2, r1   (params)
-        code[2] = 0xE3000000 | ((((uint32_t)id >> 12) & 0xF) << 16) | ((uint32_t)id & 0xFFF); // movw r0, #id
-        code[3] = 0xE59F1000;                       // ldr r1, [pc] (literal at pc+0)
-        code[4] = 0xE12FFF11;                       // bx r1
-        *(uintptr_t *)(void *)&code[5] = gate;      // .word gate (arm32: lower half), padding above
-#endif
+	amxx_dyna_make(pfn, id, (void *)&amxx_DynaCallback);
 }
 #endif
 

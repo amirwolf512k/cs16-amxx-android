@@ -54,6 +54,17 @@ jobs:
         run: |
           bash glue/build_host_chain.sh
 
+      # v27 regression test: executes the REAL register_native trampoline
+      # bytes (amxx_dyna_codegen.h) natively — catches bad instruction
+      # encodings like the aarch64 `ldr x17, [pc, #4]` bug that crashed
+      # every plugin-provided native (Zombie Plague RegisterHamBots)
+      - name: Verify register_native dyna trampoline codegen
+        shell: bash
+        run: |
+          mkdir -p out/host-test
+          cc -O0 -Wall -I amxmodx-FWGS/amxmodx scripts/dyna_tramp_test.c -o out/host-test/dyna_tramp_test
+          out/host-test/dyna_tramp_test
+
       - name: Run full AMXX chain test and evaluate
         shell: bash
         run: bash scripts/run_host_test.sh

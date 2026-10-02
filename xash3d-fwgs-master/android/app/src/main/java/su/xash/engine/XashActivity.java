@@ -318,8 +318,9 @@ public class XashActivity extends SDLActivity {
                 return shown[0];
         }
 
-        // v25: gold used by the in-game VGUI menus (team select, radio, MOTD)
-        private static final int MOTD_GOLD = 0xFFDBA044;
+        // v27: orange-gold sampled from the PC CS 1.6 MOTD reference
+        // (soldier logo, title text, divider, OK button all share it)
+        private static final int MOTD_GOLD = 0xFFF2A81D;
 
         private boolean showMOTDOnUiThread( byte[] htmlBytes ) {
                 try {
@@ -366,36 +367,39 @@ public class XashActivity extends SDLActivity {
                                 panelH = Math.round( lay.frameH * scale );
                         }
 
-                        // --- the window: dark body, thin gold border (PC VGUI frame) ---
+                        // --- v27: PC CS 1.6 window — rounded near-black panel,
+                        // solid black title bar with the orange CS soldier logo
+                        // top-left, glowing gold divider, dark body, wide
+                        // bottom-left OK (matches the PC reference shots) ---
                         LinearLayout panel = new LinearLayout( this );
                         panel.setOrientation( LinearLayout.VERTICAL );
-                        panel.setBackground( makeMOTDPanelBackground() );
+                        panel.setBackground( makeMOTDWindowBackground() );
                         FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams( panelW, panelH );
                         panelLp.gravity = Gravity.CENTER;
                         root.addView( panel, panelLp );
 
-                        // --- header: gold counter logo in the left corner + title ---
-                        int headerH = Math.max( dp( 52 ), Math.round( lay.contentY * scale ));
+                        // --- title bar: black band, soldier logo in the left corner ---
+                        int headerH = Math.max( dp( 56 ), Math.round( lay.contentY * scale ));
 
                         ImageView logo = new ImageView( this );
                         logo.setImageResource( R.drawable.cs_logo );
                         logo.setScaleType( ImageView.ScaleType.FIT_CENTER );
-                        int logoSize = Math.round( headerH * 0.74f );
+                        int logoSize = dp( 48 );
 
                         TextView title = new TextView( this );
-                        title.setText( "MESSAGE OF THE DAY" );
+                        title.setText( "Message of the Day" );
                         title.setTextColor( MOTD_GOLD );
-                        title.setTextSize( TypedValue.COMPLEX_UNIT_SP,
-                                Math.max( 17, Math.round(( headerH * 0.36f ) / dm.density )));
+                        title.setTextSize( TypedValue.COMPLEX_UNIT_SP, 22 );
                         title.setTypeface( Typeface.DEFAULT_BOLD );
-                        title.setLetterSpacing( 0.08f );
+                        title.setLetterSpacing( 0.02f );
                         title.setSingleLine( true );
                         title.setGravity( Gravity.CENTER_VERTICAL );
 
                         LinearLayout header = new LinearLayout( this );
                         header.setOrientation( LinearLayout.HORIZONTAL );
                         header.setGravity( Gravity.CENTER_VERTICAL | Gravity.START );
-                        header.setPadding( dp( 12 ), dp( 6 ), dp( 12 ), dp( 6 ));
+                        header.setBackground( makeMOTDTitleBarBackground() );
+                        header.setPadding( dp( 14 ), dp( 4 ), dp( 12 ), dp( 4 ));
                         header.addView( logo, new LinearLayout.LayoutParams( logoSize, logoSize ));
 
                         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
@@ -406,10 +410,11 @@ public class XashActivity extends SDLActivity {
                         panel.addView( header, new LinearLayout.LayoutParams(
                                         ViewGroup.LayoutParams.MATCH_PARENT, headerH ));
 
+                        // --- glowing divider under the title bar (fades both ends) ---
                         View separator = new View( this );
-                        separator.setBackgroundColor( MOTD_GOLD );
+                        separator.setBackground( makeMOTDDivider() );
                         panel.addView( separator, new LinearLayout.LayoutParams(
-                                        ViewGroup.LayoutParams.MATCH_PARENT, Math.max( 1, dp( 1 )) ));
+                                        ViewGroup.LayoutParams.MATCH_PARENT, Math.max( 2, dp( 2 )) ));
 
                         // --- body column: the content inset and the OK button
                         // share the same left/right edges, exactly like the
@@ -425,23 +430,21 @@ public class XashActivity extends SDLActivity {
                         bodyLp.gravity = Gravity.CENTER_HORIZONTAL;
                         panel.addView( body, bodyLp );
 
-                        // --- content: sandboxed WebView on a solid black inset ---
+                        // --- content: sandboxed WebView straight on the dark
+                        // body, like the PC window (pages keep their own bg) ---
                         WebView wv = createMOTDWebView( gameDir );
-                        wv.setBackgroundColor( 0xFF000000 );
+                        wv.setBackgroundColor( 0x00000000 );
                         wv.loadDataWithBaseURL( "https://motd.local/", buildMOTDDocument( raw ),
                                         "text/html", "utf-8", null );
 
                         FrameLayout content = new FrameLayout( this );
-                        content.setBackgroundColor( 0xFF000000 );
-                        int edge = Math.max( 1, dp( 1 ));
-                        content.setPadding( edge, edge, edge, edge );
                         content.addView( wv, new FrameLayout.LayoutParams(
                                         ViewGroup.LayoutParams.MATCH_PARENT,
                                         ViewGroup.LayoutParams.MATCH_PARENT ));
 
                         LinearLayout.LayoutParams contentLp = new LinearLayout.LayoutParams(
                                         ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f );
-                        contentLp.setMargins( 0, dp( 10 ), 0, 0 );
+                        contentLp.setMargins( dp( 14 ), dp( 12 ), dp( 14 ), 0 );
                         body.addView( content, contentLp );
 
                         // --- footer: wide flat OK button in the bottom-left ---
@@ -450,12 +453,12 @@ public class XashActivity extends SDLActivity {
                                         && !lay.okLabel.startsWith( "#" )) ? lay.okLabel : "OK" );
                         ok.setAllCaps( false );
                         ok.setTextColor( MOTD_GOLD );
-                        ok.setTextSize( TypedValue.COMPLEX_UNIT_SP, 17 );
+                        ok.setTextSize( TypedValue.COMPLEX_UNIT_SP, 18 );
                         ok.setTypeface( Typeface.DEFAULT_BOLD );
                         ok.setBackground( makeMOTDButtonBackground() );
                         ok.setStateListAnimator( null );
                         ok.setElevation( 0f );
-                        ok.setPadding( dp( 24 ), dp( 6 ), dp( 24 ), dp( 6 ));
+                        ok.setPadding( dp( 24 ), 0, dp( 24 ), 0 );
                         ok.setOnClickListener( new View.OnClickListener() {
                                         @Override
                                         public void onClick( View v ) {
@@ -463,15 +466,17 @@ public class XashActivity extends SDLActivity {
                                         }
                         } );
 
-                        // PC proportions from MOTD.res, but at least 38% of the
-                        // content width and a touch-friendly height
-                        int okW = Math.max( Math.round( lay.okW * scale ), Math.round( bodyW * 0.38f ));
-                        int okH = Math.max( dp( 46 ), Math.round( lay.okH * scale ));
+                        // PC proportions from MOTD.res, but at least 42% of the
+                        // content width (>=190dp) and a generous touch height —
+                        // the user asked for a visibly wider, taller OK
+                        int okW = Math.max( Math.round( lay.okW * scale ),
+                                Math.max( dp( 190 ), Math.round( bodyW * 0.42f )));
+                        int okH = Math.max( dp( 52 ), Math.round( lay.okH * scale ));
 
                         LinearLayout footer = new LinearLayout( this );
                         footer.setOrientation( LinearLayout.HORIZONTAL );
                         footer.setGravity( Gravity.START | Gravity.CENTER_VERTICAL );
-                        footer.setPadding( 0, dp( 10 ), 0, dp( 12 ));
+                        footer.setPadding( dp( 14 ), dp( 12 ), dp( 14 ), dp( 16 ));
                         footer.addView( ok, new LinearLayout.LayoutParams( okW, okH ));
                         body.addView( footer, new LinearLayout.LayoutParams(
                                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -718,23 +723,42 @@ public class XashActivity extends SDLActivity {
                 }
         }
 
-        /** v26: window frame: dark body with a thin gold border (PC VGUI look). */
-        private Drawable makeMOTDPanelBackground() {
+        /** v27: window body: rounded near-black panel (PC CS 1.6 VGUI window). */
+        private Drawable makeMOTDWindowBackground() {
                 GradientDrawable d = new GradientDrawable();
-                d.setColor( 0xB8000000 );
-                d.setStroke( Math.max( 1, dp( 1 )), MOTD_GOLD );
+                d.setColor( 0xF0050505 );
+                d.setCornerRadius( dp( 10 ) );
                 return d;
         }
 
-        /** v25: VGUI-style OK button: dark body, thin gold border, gold text. */
+        /** v27: solid black title bar, rounded top corners only. */
+        private Drawable makeMOTDTitleBarBackground() {
+                float r = dp( 10 );
+                GradientDrawable d = new GradientDrawable();
+                d.setColor( 0xFF0A0A0A );
+                d.setCornerRadii( new float[] { r, r, r, r, 0f, 0f, 0f, 0f } );
+                return d;
+        }
+
+        /** v27: glowing gold divider (transparent -> gold -> transparent). */
+        private Drawable makeMOTDDivider() {
+                GradientDrawable d = new GradientDrawable(
+                        GradientDrawable.Orientation.LEFT_RIGHT,
+                        new int[] { 0x00F2A81D, 0xFFF2A81D, 0x00F2A81D } );
+                return d;
+        }
+
+        /** v27: VGUI-style OK button: dark body, gold border, rounded corners. */
         private StateListDrawable makeMOTDButtonBackground() {
                 GradientDrawable normal = new GradientDrawable();
-                normal.setColor( 0x66000000 );
+                normal.setColor( 0x51000000 );
                 normal.setStroke( Math.max( 1, dp( 1 )), MOTD_GOLD );
+                normal.setCornerRadius( dp( 4 ) );
 
                 GradientDrawable pressed = new GradientDrawable();
-                pressed.setColor( 0x55DBA044 );
+                pressed.setColor( 0x66F2A81D );
                 pressed.setStroke( Math.max( 1, dp( 1 )), MOTD_GOLD );
+                pressed.setCornerRadius( dp( 4 ) );
 
                 StateListDrawable sld = new StateListDrawable();
                 sld.addState( new int[] { android.R.attr.state_pressed }, pressed );
