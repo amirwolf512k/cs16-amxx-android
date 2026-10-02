@@ -94,7 +94,7 @@ class GameSettingsPreferenceFragment(val game: Game) : PreferenceFragmentCompat(
 
                 val urlPref = findPreference<Preference>("source_url")!!
                 urlPref.isVisible = true
-                urlPref.summary = source.url ?: "—"
+                urlPref.summary = source.url ?: "-"
                 urlPref.isEnabled = source.url != null
                 urlPref.setOnPreferenceClickListener {
                         source.url?.let {
@@ -105,11 +105,11 @@ class GameSettingsPreferenceFragment(val game: Game) : PreferenceFragmentCompat(
 
                 val branchPref = findPreference<Preference>("source_branch")!!
                 branchPref.isVisible = true
-                branchPref.summary = source.branch ?: "—"
+                branchPref.summary = source.branch ?: "-"
 
                 val commitPref = findPreference<Preference>("source_commit")!!
                 commitPref.isVisible = true
-                commitPref.summary = source.commit ?: "—"
+                commitPref.summary = source.commit ?: "-"
                 commitPref.isEnabled = source.commit != null && source.url != null
                 commitPref.setOnPreferenceClickListener {
                         // FIXME: GitHub-styled URL!
@@ -123,6 +123,6 @@ class GameSettingsPreferenceFragment(val game: Game) : PreferenceFragmentCompat(
                 timePref.summary = if (downloadedAt > 0L)
                         DateFormat.getDateTimeInstance().format(Date(downloadedAt))
                 else
-                        "—"
+                        "-"
         }
 }

@@ -59,6 +59,35 @@ void CPluginMngr::Finalize()
 	m_Finalized = true;
 }
 
+// Zombie Plague-style plugin sets register their natives in one plugin's
+// forward and call them from another plugin's forward, relying on load order:
+// the main plugin's plugin_precache() calls plugin_natives(), and the class
+// plugin's plugin_precache() then calls zp_register_zombie_class(). AMXX only
+// wires plugin natives into other plugins' images when a plugin is loaded, so a
+// native registered after that is still a null pointer in the caller and the
+// call jumps to address 0 - a SIGSEGV inside plugin_precache with no useful
+// backtrace. Re-resolve the entries that are still unresolved.
+void CPluginMngr::RefreshNatives()
+{
+	AMX_NATIVE_INFO *table = BuildNativeTable();
+
+	if (table == NULL)
+		return;
+
+	for (CPlugin *a = head; a != NULL; a = a->next)
+	{
+		if (a->getStatusCode() == ps_running)
+		{
+			// amx_Register only fills entries that are still zero, and reports
+			// AMX_ERR_NOTFOUND for the ones nobody has registered - that is
+			// expected here and must not fail the plugin.
+			amx_Register(a->getAMX(), table, -1);
+		}
+	}
+
+	delete [] table;
+}
+
 int CPluginMngr::loadPluginsFromFile(const char* filename, bool warn)
 {
 	char file[PLATFORM_MAX_PATH];
@@ -381,10 +410,16 @@ void CPluginMngr::CPlugin::Finalize()
 
 			if (!res)
 			{
-				status = ps_bad_load;
-				sprintf(buffer, "Plugin uses an unknown function (name \"%s\") - check your modules.ini.", no_function);
-				errorMsg = buffer;
-				amx.error = AMX_ERR_NOTFOUND;
+				// A plugin's function may be registered with register_native()
+				// inside the PROVIDER plugin's plugin_init(). At this point no
+				// plugin_init has run yet: they all run together inside
+				// C_ServerActivate_Post after every plugin file has been read.
+				// 1.8.2 ran plugin_init at load time, so this never mattered.
+				// Instead of killing the plugin, warn and leave the unresolved
+				// entries in place: CForward::execute re-resolves them after
+				// each plugin (when the native count changed).
+				sprintf(buffer, "Plugin uses a function that is not registered yet (name \"%s\") - resolving after plugin_init", no_function);
+				AMXXLOG_Log("[AMXX] Plugin \"%s\": %s", name.chars(), buffer);
 			} else {
 				amx_RegisterToAny(&amx, invalid_native);
 			}

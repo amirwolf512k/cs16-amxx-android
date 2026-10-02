@@ -146,7 +146,7 @@ class Game(val ctx: Context, val basedir: File, val gameInfoFile: File) {
                 }
 
                 if (packageNames == null) {
-                        // Unknown game — try to use downloaded libraries from hlsdk-mega-build
+                        // Unknown game - try to use downloaded libraries from hlsdk-mega-build
                         val downloader = GameLibDownloader(ctx)
                         val args = commandLineArgs
 

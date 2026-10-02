@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
 
         // bump this when assets/addons.zip is updated so the bundle
         // gets re-extracted into the game directory
-        private static final String ADDONS_VERSION = "amxx-v27-repo";
+        private static final String ADDONS_VERSION = "amxx-v28-repo";
 
         private boolean mPermissionAsked = false;
 
@@ -70,7 +70,7 @@ public class MainActivity extends Activity {
                                 proceed();
                         } else {
                                 Toast.makeText( this,
-                                        "برای نصب افزونه‌ها و اجرای بازی، دسترسی حافظه را فعال کنید",
+                                        "Please grant storage access to install the addons and run the game",
                                         Toast.LENGTH_LONG ).show();
                         }
                 }
@@ -81,7 +81,7 @@ public class MainActivity extends Activity {
                         extractAddonsIfNeeded();
                 } catch( Throwable t ) {
                         Log.w( TAG, "addons extraction failed", t );
-                        Toast.makeText( this, "خطا در نصب افزونه‌ها: " + t.getMessage(), Toast.LENGTH_LONG ).show();
+                        Toast.makeText( this, "Addons installation error: " + t.getMessage(), Toast.LENGTH_LONG ).show();
                         logInstallError( "cstrike addons (cs16client)", t );
                 }
 
@@ -151,7 +151,7 @@ public class MainActivity extends Activity {
                                 }
                         }
                         Toast.makeText( this,
-                                "برای نصب افزونه‌های AMX Mod X، دسترسی کامل حافظه را فعال کنید",
+                                "Please grant All files access to install the AMX Mod X addons",
                                 Toast.LENGTH_LONG ).show();
                 } else if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ) {
                         requestPermissions( new String[] { android.Manifest.permission.WRITE_EXTERNAL_STORAGE }, 1 );
@@ -171,7 +171,7 @@ public class MainActivity extends Activity {
                                 proceed();
                         } else {
                                 Toast.makeText( this,
-                                        "بدون دسترسی حافظه نمی‌توان افزونه‌ها را نصب کرد",
+                                        "Cannot install addons without storage access",
                                         Toast.LENGTH_LONG ).show();
                         }
                 }
@@ -201,7 +201,7 @@ public class MainActivity extends Activity {
                         "cstrike/addons/metamod/dlls/libmetamod_android_arm64.so" );
 
                 // v12: keep plugins.ini in sync with this app's nativeLibraryDir
-                // (YaPB as metamod plugin) — must run on every launch in case the
+                // (YaPB as metamod plugin) - must run on every launch in case the
                 // engine/game ABI layout changed, and it is cheap anyway.
                 patchPluginsIni();
         }
@@ -261,8 +261,8 @@ public class MainActivity extends Activity {
                 prefs.edit().putString( prefKey, ADDONS_VERSION ).apply();
                 Log.i( TAG, "AMXX addons extracted (" + assetName + "): " + count
                         + " files -> " + dest.getAbsolutePath() );
-                Toast.makeText( this, "افزونه‌های AMX Mod X نصب شد (" + assetName + ": "
-                        + count + " فایل)", Toast.LENGTH_SHORT ).show();
+				Toast.makeText( this, "AMX Mod X addons installed (" + assetName + ": "
+						+ count + " files)", Toast.LENGTH_SHORT ).show();
         }
 
         /**
@@ -274,7 +274,7 @@ public class MainActivity extends Activity {
          *   the yapb wrapper does not re-export entity spawn symbols, so the
          *   engine failed every map entity with "No spawn function"). YaPB
          *   needs an absolute path to its library inside this app's
-         *   nativeLibraryDir, which is only known at runtime — so we write it
+         *   nativeLibraryDir, which is only known at runtime - so we write it
          *   here, right after the extraction.
          */
         private void patchPluginsIni() {

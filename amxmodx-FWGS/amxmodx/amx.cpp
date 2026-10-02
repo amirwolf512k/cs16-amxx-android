@@ -2513,6 +2513,7 @@ static const void * const amx_opcodelist[] = {
       } /* if */
       ABORT(amx,num);
     } /* if */
+    hea=amx->hea;  /* adopt heap growth from natives (amx_Allot); else every Allot across SYSREQs reuses one block */
     NEXT(cip);
   op_sysreq_c:
     GETPARAM(offs);
@@ -2534,6 +2535,7 @@ static const void * const amx_opcodelist[] = {
       } /* if */
       ABORT(amx,num);
     } /* if */
+    hea=amx->hea;  /* adopt heap growth from natives (amx_Allot); else every Allot across SYSREQs reuses one block */
     NEXT(cip);
   op_sysreq_d:
     GETPARAM(offs);
@@ -2555,6 +2557,7 @@ static const void * const amx_opcodelist[] = {
       } /* if */
       ABORT(amx,amx->error);
     } /* if */
+    hea=amx->hea;  /* adopt heap growth from natives (amx_Allot); else every Allot across SYSREQs reuses one block */
     NEXT(cip);
   op_file:
     GETPARAM(offs);
@@ -3549,6 +3552,7 @@ int AMXAPI amx_Exec(AMX *amx, cell *retval, int index)
         } /* if */
         ABORT(amx,num);
       } /* if */
+      hea=amx->hea;  /* adopt heap growth from natives (amx_Allot); else every Allot across SYSREQs reuses one block */
       break;
     case OP_SYSREQ_C:
       GETPARAM(offs);
@@ -3570,6 +3574,7 @@ int AMXAPI amx_Exec(AMX *amx, cell *retval, int index)
         } /* if */
         ABORT(amx,num);
       } /* if */
+      hea=amx->hea;  /* adopt heap growth from natives (amx_Allot); else every Allot across SYSREQs reuses one block */
       break;
     case OP_SYSREQ_D:
       GETPARAM(offs);
@@ -3591,6 +3596,7 @@ int AMXAPI amx_Exec(AMX *amx, cell *retval, int index)
         } /* if */
         ABORT(amx,amx->error);
       } /* if */
+      hea=amx->hea;  /* adopt heap growth from natives (amx_Allot); else every Allot across SYSREQs reuses one block */
       break;
     case OP_LINE:
       SKIPPARAM(2);

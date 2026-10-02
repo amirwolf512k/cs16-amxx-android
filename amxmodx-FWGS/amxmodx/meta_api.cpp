@@ -682,20 +682,18 @@ void C_ServerActivate(edict_t *pEdictList, int edictCount, int clientMax)
                 }
         }
 
-        if (g_isDropClientHookAvailable)
+        if (g_isDropClientHookAvailable && !g_isDropClientHookEnabled)
         {
-                if (!g_isDropClientHookEnabled)
-                {
-                        if (RehldsApi)
-                        {
-                                RehldsHookchains->SV_DropClient()->registerHook(SV_DropClient_RH);
-                        }
-                        else
-                        {
-                                DropClientDetour->EnableDetour();
-                        }
-                        g_isDropClientHookEnabled = true;
-                }
+        	if (RehldsApi)
+        	{
+        		RehldsHookchains->SV_DropClient()->registerHook(SV_DropClient_RH);
+        		g_isDropClientHookEnabled = true;
+        	}
+        	else if (DropClientDetour)
+        	{
+        		DropClientDetour->EnableDetour();
+        		g_isDropClientHookEnabled = true;
+        	}
         }
 
         RETURN_META(MRES_IGNORED);
@@ -773,20 +771,17 @@ void C_ServerDeactivate()
                 }
         }
 
-        if (g_isDropClientHookAvailable)
+        if (g_isDropClientHookAvailable && g_isDropClientHookEnabled)
         {
-                if (g_isDropClientHookEnabled)
-                {
-                        if (RehldsApi)
-                        {
-                                RehldsHookchains->SV_DropClient()->unregisterHook(SV_DropClient_RH);
-                        }
-                        else
-                        {
-                                DropClientDetour->DisableDetour();
-                        }
-                        g_isDropClientHookEnabled = false;
-                }
+        	if (RehldsApi)
+        	{
+        		RehldsHookchains->SV_DropClient()->unregisterHook(SV_DropClient_RH);
+        	}
+        	else if (DropClientDetour)
+        	{
+        		DropClientDetour->DisableDetour();
+        	}
+        	g_isDropClientHookEnabled = false;
         }
 
         g_players_num   = 0;
@@ -1733,8 +1728,13 @@ C_DLLEXPORT     int     Meta_Attach(PLUG_LOADTIME now, META_FUNCTIONS *pFunction
                 }
                 else
                 {
-                        auto reason = RehldsApi ? "update ReHLDS" : "check your gamedata files";
-                        AMXXLOG_Log("client_disconnected and client_remove forwards have been disabled - %s.", reason);
+                        // Xash3D-FWGS does not export SV_DropClient and its signature
+                        // differs from GoldSrc's variadic form, so the detour cannot be
+                        // installed. The engine still calls pfnClientDisconnect (forwarded
+                        // through metamod), so deliver client_disconnected/client_remove
+                        // from C_ClientDisconnect instead of leaving them permanently off.
+                        g_isDropClientHookAvailable = true;
+                        AMXXLOG_Log("SV_DropClient hook unavailable - delivering client_disconnected/client_remove via pfnClientDisconnect.");
                 }
         }
 

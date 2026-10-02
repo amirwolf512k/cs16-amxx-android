@@ -132,6 +132,7 @@ public:
 	
 	inline int getPluginsNum() const { return pCounter; }
 	void Finalize();
+	void RefreshNatives();
 	void clear();
 
 	class iterator

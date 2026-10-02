@@ -8,6 +8,7 @@
 //     https://alliedmods.net/amxmodx-license
 
 #include "amxmodx.h"
+#include "natives.h"
 #include "debugger.h"
 #include "binlog.h"
 
@@ -132,8 +133,22 @@ cell CForward::execute(cell *params, ForwardPreparedArray *preparedArrays, void 
 #if defined BINLOG_ENABLED
 			g_BinLog.WriteOp(BinLog_CallPubFunc, iter->pPlugin->getId(), iter->func);
 #endif
+			// A plugin may register natives that the next plugin in this same
+			// forward calls (Zombie Plague's main plugin does it in
+			// plugin_precache, its class plugin calls them from its own). AMXX
+			// wires plugin natives in at load time only, so re-resolve as soon
+			// as a plugin has added some, before the next plugin runs.
+			int nativesBefore = GetRegisteredNativesCount();
+
 			int err = amx_Exec(amx, &retVal, iter->func);
-			
+
+			if (GetRegisteredNativesCount() != nativesBefore)
+			{
+				print_srvconsole("[AMXX] forward %s: \"%s\" registered plugin natives, re-resolving\n",
+					m_Name.chars(), iter->pPlugin->getName());
+				g_plugins.RefreshNatives();
+			}
+
 			// log runtime error, if any
 			if (err != AMX_ERR_NONE)
 			{

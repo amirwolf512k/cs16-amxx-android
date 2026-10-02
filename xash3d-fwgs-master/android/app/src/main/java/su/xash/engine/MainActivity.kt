@@ -91,7 +91,7 @@ class MainActivity : AppCompatActivity() {
 				append(getString(R.string.engine_update_changelog_header))
 				val shown = changelog.take(CHANGELOG_MAX_LINES)
 				for (c in shown)
-					append("\n• ").append(c.subject)
+					append("\n- ").append(c.subject)
 				val extra = changelog.size - shown.size
 				if (extra > 0)
 					append("\n").append(getString(R.string.engine_update_changelog_more, extra))
@@ -129,7 +129,7 @@ class MainActivity : AppCompatActivity() {
 					try {
 						startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES))
 					} catch (_: ActivityNotFoundException) {
-						// no settings screen — nothing more we can do
+						// no settings screen - nothing more we can do
 					}
 				}
 			}

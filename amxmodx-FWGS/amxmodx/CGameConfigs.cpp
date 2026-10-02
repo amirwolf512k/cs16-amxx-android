@@ -720,6 +720,28 @@ bool CGameConfig::Reparse(char *error, size_t maxlength)
 			continue;
 		}
 
+		/* ABI-suffixed overrides (*.arm64.txt / *.arm32.txt) hold offsets
+		 * measured on one pointer width. Only parse the variant matching the
+		 * running build: the addons zip ships both variants for every ABI. */
+		if (length > 10 && strcmp(&currentFile[length - 10], ".arm64.txt") == 0)
+		{
+#if defined(__LP64__)
+			/* 64-bit build: keep this variant. */
+#else
+			customDir->NextEntry();
+			continue;
+#endif
+		}
+		else if (length > 10 && strcmp(&currentFile[length - 10], ".arm32.txt") == 0)
+		{
+#if defined(__LP64__)
+			customDir->NextEntry();
+			continue;
+#else
+			/* 32-bit build: keep this variant. */
+#endif
+		}
+
 		g_LibSys.PathFormat(path, sizeof(path), "%s/custom/%s", m_File, currentFile);
 
 		if (!EnterFile(path, error, maxlength))

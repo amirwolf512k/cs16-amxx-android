@@ -519,17 +519,63 @@ static cell AMX_NATIVE_CALL strip_user_weapons(AMX *amx, cell *params) // index
 
 	edict_t* pPlayer = TypeConversion.id_to_edict(params[1]);
 
-	string_t item = MAKE_STRING("player_weaponstrip");
-	edict_t *pent = CREATE_NAMED_ENTITY(item);
+	// Remove every weapon/item entity owned by this player directly through
+	// the engine. The classic implementation spawns a fake
+	// "player_weaponstrip" entity and punts it through the gamedll Use()
+	// round-trip, which on current Xash3D FWGS android builds reaches a
+	// broken symbol-resolution path (dlsym) and faults whenever a player is
+	// re-equipped while bots are thinking (Zombie Plague with bots, etc.).
+	// Iterating the global edict table and dropping owned weapon entities
+	// skips that gamedll round-trip entirely and only touches functions the
+	// engine provides on all builds.
+	//
+	// The scan is split into two passes: first collect the matching entity
+	// slots, then remove them. Removing an entity while still walking the
+	// table/string pool made classname reads race with the engine's memory
+	// management and could dereference freed memory (SIGSEGV with a tagged
+	// heap pointer). The scan is also bounded so world-teardown / oversized
+	// offsets can never walk past the engine's entity array.
+	static const int kMaxScanEdicts = 4096;
+	int matched[512];
+	int matchedCount = 0;
 
-	if (FNullEnt(pent))
+	for (int i = 0; i < kMaxScanEdicts; ++i)
 	{
-		return 0;
+		edict_t *pEntity = (*g_engfuncs.pfnPEntityOfEntIndex)(i);
+		if (pEntity == nullptr)
+			break;
+
+		// Skip engine slots that are currently unused; their entvars are
+		// stale and (owner/classname) can hold garbage after an entity is
+		// freed.
+		if (pEntity->free)
+			continue;
+
+		if (pEntity == pPlayer)
+			continue;
+
+		if (pEntity->v.owner != pPlayer)
+			continue;
+
+		const char *szClass = (*g_engfuncs.pfnSzFromIndex)(pEntity->v.classname);
+		if (!szClass
+			|| (strncmp(szClass, "weapon_", 7) != 0
+			&& strncmp(szClass, "ammo_", 5) != 0
+			&& strncmp(szClass, "item_", 5) != 0
+			&& strncmp(szClass, "tf_weapon_", 10) != 0))
+			continue;
+
+		if (matchedCount < (int)(sizeof(matched) / sizeof(matched[0])))
+			matched[matchedCount++] = i;
 	}
 
-	MDLL_Spawn(pent);
-	MDLL_Use(pent, pPlayer);
-	REMOVE_ENTITY(pent);
+	for (int k = 0; k < matchedCount; ++k)
+	{
+		edict_t *pEntity = (*g_engfuncs.pfnPEntityOfEntIndex)(matched[k]);
+		if (!pEntity || pEntity->free)
+			continue;
+		REMOVE_ENTITY(pEntity);
+	}
 
 	*reinterpret_cast<int *>(MF_PlayerPropAddr(params[1], Player_CurrentWeapon)) = 0;
 

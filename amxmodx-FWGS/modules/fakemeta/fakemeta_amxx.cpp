@@ -31,8 +31,28 @@ CGameRules* InstallGameRules(IReGameHook_InstallGameRules *chain)
 	return static_cast<CGameRules*>(GameRulesRH);
 }
 
+// v28 (from nexora): ARM flush-to-zero would round denormalized floats to
+// zero, breaking pev/set_pev vector round-trips (fakemeta copies vectors
+// through denormal intermediates on some paths). Disable the FZ bit so
+// denormals are preserved on both ARM ABIs.
+static void DisableARM_FTZ(void)
+{
+#if defined(__aarch64__)
+	unsigned long long fpcr;
+	__asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
+	fpcr &= ~(1ULL << 24);
+	__asm__ volatile("msr fpcr, %0" :: "r"(fpcr));
+#elif defined(__arm__)
+	unsigned int fpscr;
+	__asm__ volatile("vmrs %0, fpscr" : "=r"(fpscr));
+	fpscr &= ~(1u << 24);
+	__asm__ volatile("vmsr fpscr, %0" :: "r"(fpscr));
+#endif
+}
+
 void OnAmxxAttach()
 {
+	DisableARM_FTZ();
 	initialze_offsets();
 	initialize_glb_offsets();
 

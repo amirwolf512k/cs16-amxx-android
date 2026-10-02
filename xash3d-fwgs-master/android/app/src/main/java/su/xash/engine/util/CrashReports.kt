@@ -157,7 +157,7 @@ object CrashReports {
 			return
 		}
 
-		// Multiple mail apps — show a chooser limited to them, no other share targets
+		// Multiple mail apps - show a chooser limited to them, no other share targets
 		val chooser = Intent.createChooser(targeted[0], ctx.getString(R.string.crash_send_to_developers))
 		chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS, targeted.drop(1).toTypedArray())
 		ctx.startActivity(chooser)

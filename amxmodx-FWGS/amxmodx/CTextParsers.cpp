@@ -347,6 +347,7 @@ SMCError TextParsers::ParseStream_SMC(void *stream,
 	SMCResult res;
 	SMCStates states;
 	char c;
+	bool end_of_last_buffer_was_backslash = false;
 
 	StringInfo strings[3];
 	StringInfo emptystring;
@@ -388,6 +389,10 @@ SMCError TextParsers::ParseStream_SMC(void *stream,
 		if (reparse_point)
 		{
 			read += (parse_point - reparse_point);
+			if (read > 0)
+			{
+				end_of_last_buffer_was_backslash = reparse_point[-1] == '\\';
+			}
 			parse_point = reparse_point;
 			reparse_point = NULL;
 		}
@@ -458,15 +463,11 @@ SMCError TextParsers::ParseStream_SMC(void *stream,
 			{
 				if (in_quote)
 				{
-					/* If i was 0, we could have reparsed, so make sure there's no buffer underrun.
-					* LP64 fix: with unsigned int i == 0, "parse_point[i - 1]" wrapped to
-					* parse_point + 4GB (32-bit builds silently computed parse_point - 1) and
-					* crashed when a read chunk boundary landed on a quote inside a quoted
-					* string. When i == 0 the guard above guarantees parse_point != in_buf,
-					* so parse_point[-1] is the last byte of the previous chunk, still in
-					* the buffer. */
+					/* If i was 0, we could have reparse-aligned on the chunk boundary, so
+					* parse_point[i - 1] must never be read directly: end_of_last_buffer_was_backslash
+					* tracks whether the previous chunk ended with a backslash instead. */
 					if ((&parse_point[i] != in_buf) && c == '"'
-						&& (i != 0 ? parse_point[i - 1] : parse_point[-1]) != '\\')
+						&& !((i == 0 && end_of_last_buffer_was_backslash) || (i > 0 && parse_point[i - 1] == '\\')))
 					{
 						/* If we reached a quote in an ignore phase,
 						* we're staging a string and we must rotate it out.
@@ -738,6 +739,7 @@ SMCError TextParsers::ParseStream_SMC(void *stream,
 			if (parse_point)
 			{
 				parse_point = &parse_point[read];
+				end_of_last_buffer_was_backslash = parse_point[-1] == '\\';
 				parse_point -= bytes;
 			}
 		}
