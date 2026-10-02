@@ -132,8 +132,14 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist symbols
+          # v31: give the two APKs unambiguous names -- both gradle projects
+          # produce "app-<variant>.apk" and "app-git-release.apk" (the GAME
+          # apk) was indistinguishable from an engine build, so users kept
+          # updating only the engine and missed every client.so change
+          # (MOTD dialog call, touch fixes, ...) shipped inside the game APK.
           find xash3d-fwgs-master/android/app/build/outputs/apk -name "*.apk" -exec cp -v {} dist/ \;
-          find cs16-client-main/android/app/build/outputs/apk -name "*.apk" -exec cp -v {} dist/ \;
+          find cs16-client-main/android/app/build/outputs/apk -name "*.apk" \
+            -exec bash -c 'cp -v "$1" "dist/cs16client-$(basename "$1")"' _ {} \;
           cp out/cstrike-addons.zip dist/
           cp out/valve-addons.zip dist/
           # unstripped native libs for debugging: with the v26 crash

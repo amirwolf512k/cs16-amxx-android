@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
 
         // bump this when assets/addons.zip is updated so the bundle
         // gets re-extracted into the game directory
-        private static final String ADDONS_VERSION = "amxx-v30-repo";
+        private static final String ADDONS_VERSION = "amxx-v31-repo";
 
         private boolean mPermissionAsked = false;
 
@@ -261,8 +261,8 @@ public class MainActivity extends Activity {
                 prefs.edit().putString( prefKey, ADDONS_VERSION ).apply();
                 Log.i( TAG, "AMXX addons extracted (" + assetName + "): " + count
                         + " files -> " + dest.getAbsolutePath() );
-				Toast.makeText( this, "AMX Mod X addons installed (" + assetName + ": "
-						+ count + " files)", Toast.LENGTH_SHORT ).show();
+                                Toast.makeText( this, "AMX Mod X addons installed (" + assetName + ": "
+                                                + count + " files)", Toast.LENGTH_SHORT ).show();
         }
 
         /**
@@ -285,34 +285,52 @@ public class MainActivity extends Activity {
                                 return;
                         dir.mkdirs();
 
+                        // v31: AMX Mod X and YaPB are independent switches (both can
+                        // be enabled at the same time). The engine app gates each
+                        // plugins.ini line through a marker file next to the ini,
+                        // because this app cannot read the engine's SharedPreferences.
+                        // When BOTH are disabled the engine bypasses metamod entirely
+                        // (XASH3D_DISABLE_AMXX) and the ini contents do not matter.
+                        boolean amxxEnabled = !new File( dir, "amxmodx.disabled" ).isFile();
+                        boolean yapbEnabled = !new File( dir, "yapb.disabled" ).isFile();
+
                         StringBuilder sb = new StringBuilder();
                         sb.append( ";;;\n" );
                         sb.append( "; Metamod plugin list for Android (xash3d-fwgs)\n" );
                         sb.append( "; AMX Mod X core:\n" );
                         sb.append( ";;;\n" );
-                        sb.append( "linux addons/amxmodx/dlls/libmm_amxmodx.so\n" );
+                        if( amxxEnabled ) {
+                                sb.append( "linux addons/amxmodx/dlls/libmm_amxmodx.so\n" );
+                        } else {
+                                sb.append( "; disabled by the AMX Mod X switch: addons/metamod/amxmodx.disabled\n" );
+                        }
 
                         // YaPB bot plugin (absolute path, ABI-dependent)
-                        String nativeDir = getApplicationInfo().nativeLibraryDir;
-                        String[] abis = android.os.Build.SUPPORTED_ABIS;
-                        String yapbName = null;
-                        if( abis != null && abis.length > 0 && abis[0].contains( "arm64" ) )
-                                yapbName = "libyapb_android_arm64.so";
-                        else if( abis != null && abis.length > 0 )
-                                yapbName = "libyapb_android_armv7l.so";
+                        if( yapbEnabled ) {
+                                String nativeDir = getApplicationInfo().nativeLibraryDir;
+                                String[] abis = android.os.Build.SUPPORTED_ABIS;
+                                String yapbName = null;
+                                if( abis != null && abis.length > 0 && abis[0].contains( "arm64" ) )
+                                        yapbName = "libyapb_android_arm64.so";
+                                else if( abis != null && abis.length > 0 )
+                                        yapbName = "libyapb_android_armv7l.so";
 
-                        if( yapbName != null && nativeDir != null ) {
-                                File yapb = new File( nativeDir, yapbName );
-                                if( yapb.isFile() ) {
-                                        sb.append( ";\n; YaPB bot (as metamod plugin):\n" );
-                                        sb.append( "linux " ).append( yapb.getAbsolutePath() ).append( "\n" );
+                                if( yapbName != null && nativeDir != null ) {
+                                        File yapb = new File( nativeDir, yapbName );
+                                        if( yapb.isFile() ) {
+                                                sb.append( ";\n; YaPB bot (as metamod plugin):\n" );
+                                                sb.append( "linux " ).append( yapb.getAbsolutePath() ).append( "\n" );
+                                        }
                                 }
+                        } else {
+                                sb.append( "; YaPB bots disabled by the YaPB switch: addons/metamod/yapb.disabled\n" );
                         }
 
                         java.io.PrintWriter pw = new java.io.PrintWriter( new java.io.FileWriter( ini, false ) );
                         pw.print( sb.toString() );
                         pw.close();
-                        Log.i( TAG, "plugins.ini patched: " + ini.getAbsolutePath() );
+                        Log.i( TAG, "plugins.ini patched: " + ini.getAbsolutePath()
+                                + " (amxx=" + amxxEnabled + ", yapb=" + yapbEnabled + ")" );
                 } catch( Throwable t ) {
                         Log.w( TAG, "plugins.ini patch failed", t );
                 }

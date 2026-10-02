@@ -334,6 +334,8 @@ public class XashActivity extends SDLActivity {
 
                         String title = decodeMotdBytes( titleBytes );
                         String raw = new String( htmlBytes, "UTF-8" );
+                        Log.i( TAG, "MOTD dialog: title=\"" + title + "\" payloadBytes="
+                                + ( htmlBytes != null ? htmlBytes.length : -1 ));
                         String base = mMotdBaseDir != null ? mMotdBaseDir
                                 : Environment.getExternalStorageDirectory().getAbsolutePath() + "/xash";
                         String game = mMotdGameDir != null ? mMotdGameDir : "valve";
@@ -460,6 +462,7 @@ public class XashActivity extends SDLActivity {
 
                         mMotdDialog = dialog;
                         dialog.show();
+                        Log.i( TAG, "MOTD dialog shown (WebView HTML rendering)" );
                         return true;
                 } catch ( Throwable t ) {
                         Log.w( TAG, "showMOTD failed", t );
@@ -484,10 +487,26 @@ public class XashActivity extends SDLActivity {
                 String trimmed = raw == null ? "" : raw.trim();
                 String lower = trimmed.toLowerCase( Locale.US );
 
+                // v31: broader tag list -- server MOTDs use every HTML tag in
+                // the book (<head>, <title>, <style>, <meta>, <center>, <span>,
+                // <h1>..<h6>, <li>, <b>/<i>/<u>, ...). A real HTML page always
+                // carries at least one of these; plain chat-style text never
+                // matches because "<" must be immediately followed by a letter
+                // and form a known tag prefix.
                 boolean looksHtml = lower.contains( "<html" ) || lower.contains( "<body" )
+                        || lower.contains( "<head" ) || lower.contains( "<title" )
+                        || lower.contains( "<meta" ) || lower.contains( "<style" )
                         || lower.contains( "<br" ) || lower.contains( "<p>" ) || lower.contains( "<p " )
                         || lower.contains( "<table" ) || lower.contains( "<div" ) || lower.contains( "<font" )
-                        || lower.contains( "<img" ) || lower.contains( "<!doctype" );
+                        || lower.contains( "<img" ) || lower.contains( "<center" ) || lower.contains( "<span" )
+                        || lower.contains( "<h1" ) || lower.contains( "<h2" ) || lower.contains( "<h3" )
+                        || lower.contains( "<h4" ) || lower.contains( "<h5" ) || lower.contains( "<h6" )
+                        || lower.contains( "<li" ) || lower.contains( "<pre" )
+                        || lower.contains( "<b>" ) || lower.contains( "<i>" ) || lower.contains( "<u>" )
+                        || lower.contains( "<em>" ) || lower.contains( "<strong" )
+                        || lower.contains( "<hr" ) || lower.contains( "<a " ) || lower.contains( "<!doctype" );
+
+                Log.i( TAG, "MOTD content: len=" + trimmed.length() + " html=" + looksHtml );
 
                 if ( looksHtml )
                         return trimmed;

@@ -220,6 +220,10 @@ int CHudMOTD :: MsgFunc_MOTD( const char *pszName, int iSize, void *pbuf )
                                 return 1;
                         }
 
+                        // v31: make the fallback visible -- if users ever end up
+                        // here, the engine log tells us the WebView dialog could
+                        // not be shown (and this print marks the client side).
+                        Con_Printf( "MOTD: engine dialog failed, using HUD text fallback\n" );
                         MOTD_StripHTML( m_szMOTD );
                 }
 

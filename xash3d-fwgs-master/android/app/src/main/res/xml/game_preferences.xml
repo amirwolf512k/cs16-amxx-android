@@ -26,7 +26,7 @@
                 app:layout="@layout/switch_preference"
                 app:title="@string/game_settings_yapb_bots"
                 app:summary="@string/game_settings_yapb_bots_summary"
-                app:defaultValue="false"
+                app:defaultValue="true"
                 app:isPreferenceVisible="false" />
 
         <Preference

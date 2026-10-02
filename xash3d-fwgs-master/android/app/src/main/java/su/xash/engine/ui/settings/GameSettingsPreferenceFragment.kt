@@ -10,6 +10,7 @@ import androidx.preference.SwitchPreferenceCompat
 import su.xash.engine.R
 import su.xash.engine.model.Game
 import su.xash.engine.model.GameLibDownloader
+import java.io.File
 import java.text.DateFormat
 import java.util.Date
 
@@ -48,21 +49,18 @@ class GameSettingsPreferenceFragment(val game: Game) : PreferenceFragmentCompat(
                         val enableYaPBBots = findPreference<SwitchPreferenceCompat>("enable_yapb_bots")!!
                         enableYaPBBots.isVisible = true
 
-                        // v8.1: both switches can be OFF at the same time (no forced
-                        // fallback mode anymore). Turning one ON automatically turns
-                        // the other OFF -- the last one you enable wins.
+                        // v31: AMX Mod X and YaPB are fully independent now -- both
+                        // can be enabled at the same time (metamod loads both from
+                        // plugins.ini). Each switch only gates its own plugins.ini
+                        // line through a marker file in the game dir, because
+                        // plugins.ini itself is patched by the cs16client installer
+                        // app, which cannot read this app's SharedPreferences.
                         enableAmxx.setOnPreferenceChangeListener { _, newValue ->
-                                if (newValue == true && enableYaPBBots.isChecked) {
-                                        // AMX Mod X mode: bots go off
-                                        enableYaPBBots.isChecked = false
-                                }
+                                writeMetaMarker("amxmodx.disabled", newValue != true)
                                 true
                         }
                         enableYaPBBots.setOnPreferenceChangeListener { _, newValue ->
-                                if (newValue == true && enableAmxx.isChecked) {
-                                        // pure bot mode: AMX Mod X goes off
-                                        enableAmxx.isChecked = false
-                                }
+                                writeMetaMarker("yapb.disabled", newValue != true)
                                 true
                         }
                 }
@@ -84,6 +82,20 @@ class GameSettingsPreferenceFragment(val game: Game) : PreferenceFragmentCompat(
                         }
 
                         true
+                }
+        }
+
+        /** v31: create/remove a marker file under <gamedir>/addons/metamod
+         *  so the cs16client plugins.ini patcher (a separate app that cannot
+         *  read our SharedPreferences) can honour the per-game switches. */
+        private fun writeMetaMarker(name: String, present: Boolean) {
+                try {
+                        val metaDir = File(game.basedir, "addons/metamod")
+                        metaDir.mkdirs()
+                        val marker = File(metaDir, name)
+                        if (present) marker.createNewFile() else marker.delete()
+                } catch (e: Exception) {
+                        e.printStackTrace()
                 }
         }
 

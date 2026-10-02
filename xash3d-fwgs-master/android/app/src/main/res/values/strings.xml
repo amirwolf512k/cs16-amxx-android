@@ -8,9 +8,9 @@
         <string name="game_settings_command_line">Command-line arguments</string>
         <string name="game_settings_volume_buttons">Use volume buttons in-game</string>
         <string name="game_settings_yapb_bots">Enable YaPB bots (CS only)</string>
-        <string name="game_settings_yapb_bots_summary">Pure bots mode. Enabling YaPB turns AMX Mod X off automatically.</string>
+        <string name="game_settings_yapb_bots_summary">Load the YaPB bot plugin. Independent of AMX Mod X -- both can be enabled at the same time.</string>
         <string name="game_settings_amxx">AMX Mod X</string>
-        <string name="game_settings_amxx_summary">Load Metamod + AMX Mod X plugins (default mode). Enabling this turns YaPB bots off.</string>
+        <string name="game_settings_amxx_summary">Load Metamod + AMX Mod X plugins. Independent of YaPB bots -- both can be enabled at the same time.</string>
         <string name="game_settings_sma_compiler">SMA compiler</string>
         <string name="game_settings_sma_compiler_summary">Compile .sma scripts into .amxx plugins and show the build log</string>
         <string name="compiler_title">SMA compiler</string>

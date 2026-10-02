@@ -68,11 +68,39 @@ class Game(val ctx: Context, val basedir: File, val gameInfoFile: File) {
                         ValveAddonsInstaller.ensureInstalled(ctx.applicationContext)
                 }
 
-                // v7: AMX Mod X per-game toggle. When disabled the engine loads the
-                // original server library directly (Xash3D_DISABLE_AMXX in lib_common.c).
+                // v7: AMX Mod X per-game toggle. v31: AMX Mod X and YaPB are
+                // independent switches -- both can be on at the same time
+                // (metamod loads both from plugins.ini). Each switch gates its
+                // own plugins.ini line through a marker file next to it, because
+                // plugins.ini is patched by the cs16client installer app, which
+                // cannot read this app's SharedPreferences. Only when BOTH are
+                // off does the engine bypass metamod entirely and load the
+                // original server library directly. YaPB is a CS-only concept:
+                // for other game dirs (valve) the old single-switch behaviour
+                // is kept.
+                val isCS = basedir.name.equals("cstrike", ignoreCase = true)
+                                || basedir.name.equals("czero", ignoreCase = true)
                 val enableAmxx = pref.getBoolean("enable_amxx", true)
-                if (!enableAmxx)
+                val enableYapb = isCS && pref.getBoolean("enable_yapb_bots", true)
+
+                fun writeMetaMarker(name: String, present: Boolean) {
+                        try {
+                                val metaDir = File(basedir, "addons/metamod")
+                                metaDir.mkdirs()
+                                val marker = File(metaDir, name)
+                                if (present) marker.createNewFile() else marker.delete()
+                        } catch (e: Exception) {
+                                e.printStackTrace()
+                        }
+                }
+
+                if (!enableAmxx && !enableYapb)
                         envList += arrayOf("XASH3D_DISABLE_AMXX", "1")
+
+                if (isCS) {
+                        writeMetaMarker("amxmodx.disabled", !enableAmxx)
+                        writeMetaMarker("yapb.disabled", !enableYapb)
+                }
 
                 if (basedir.name != defaultGameDir)
                         commandLineArgs += "-game ${basedir.name} "
