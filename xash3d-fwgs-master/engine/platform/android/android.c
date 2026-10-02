@@ -48,7 +48,7 @@ void Android_Init( void )
 	jni.loadAndroidID = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadAndroidID", "()Ljava/lang/String;" );
 	jni.getAndroidID = (*jni.env)->GetMethodID( jni.env, jni.actcls, "getAndroidID", "()Ljava/lang/String;" );
 	jni.saveAndroidID = (*jni.env)->GetMethodID( jni.env, jni.actcls, "saveAndroidID", "(Ljava/lang/String;)V" );
-	jni.showMOTD = (*jni.env)->GetMethodID( jni.env, jni.actcls, "showMOTD", "([B)V" );
+	jni.showMOTD = (*jni.env)->GetMethodID( jni.env, jni.actcls, "showMOTD", "([B)Z" );
 
 	// v21: a failed lookup leaves a pending exception; clear it so
 	// nothing downstream (filesystem assets, SDL) trips over it
@@ -125,28 +125,34 @@ malformed (non-modified-UTF-8) server string can't abort in NewStringUTF;
 Java decodes it as UTF-8 with replacement characters.
 ========================
 */
-void Android_ShowMOTD( const char *html )
+qboolean Android_ShowMOTD( const char *html )
 {
 	size_t len;
 	jbyteArray jbytes;
+	jboolean shown;
 
 	if( !jni.env || !jni.activity || !jni.showMOTD )
-		return;
+		return false;
 
 	len = Q_strlen( html );
 	jbytes = (*jni.env)->NewByteArray( jni.env, (jsize)len );
 
 	if( !jbytes )
-		return;
+		return false;
 
 	(*jni.env)->SetByteArrayRegion( jni.env, jbytes, 0, (jsize)len, (const jbyte *)html );
-	(*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.showMOTD, jbytes );
+	shown = (*jni.env)->CallBooleanMethod( jni.env, jni.activity, jni.showMOTD, jbytes );
 	(*jni.env)->DeleteLocalRef( jni.env, jbytes );
 
 	// v21: showMOTD catches Throwable internally, but never leave a
 	// pending exception behind just in case
 	if( (*jni.env)->ExceptionCheck( jni.env ))
+	{
 		(*jni.env)->ExceptionClear( jni.env );
+		return false;
+	}
+
+	return shown ? true : false;
 }
 
 /*

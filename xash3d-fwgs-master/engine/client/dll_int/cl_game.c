@@ -3765,16 +3765,23 @@ sandboxed WebView dialog (no JS, no network, filesystem access limited
 to the current gamedir, addons/ excluded). Other platforms: no-op.
 =============
 */
-static void GAME_EXPORT pfnShowMOTD( const char *html )
+static int GAME_EXPORT pfnShowMOTD( const char *html )
 {
 	if( COM_StringEmptyOrNULL( html ))
-		return;
+		return true;
 
 #if XASH_ANDROID
-	Android_ShowMOTD( html );
+	if( Android_ShowMOTD( html ))
+		return true;
+
+	// v22: the dialog could not be shown (WebView missing, activity
+	// dying, ...). Report failure so the client dll can fall back to
+	// its own HUD text renderer instead of dropping the MOTD.
+	Con_Printf( S_WARN "%s: MOTD dialog failed, using HUD fallback\n", __func__ );
 #else
 	Con_Reportf( "%s: HTML MOTD rendering is only supported on Android\n", __func__ );
 #endif
+	return false;
 }
 
 static cl_enginefunc_t gEngfuncs =

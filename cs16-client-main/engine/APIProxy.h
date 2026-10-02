@@ -354,7 +354,7 @@ typedef int						(*pfnEngSrc_pfnGetAppID_t)			( void );
 typedef cmdalias_t*				(*pfnEngSrc_pfnGetAliases_t)		( void );
 typedef void					(*pfnEngSrc_pfnVguiWrap2_GetMouseDelta_t) ( int *x, int *y );
 typedef int							(*pfnEngSrc_pfnFilteredClientCmd_t) 	( char *szCmdString );
-typedef void							(*pfnEngSrc_pfnShowMOTD_t) 	( const char *html );
+typedef int							(*pfnEngSrc_pfnShowMOTD_t) 	( const char *html ); // v22: returns true when the dialog is shown
 
 // Pointers to the exported engine functions themselves
 typedef struct cl_enginefuncs_s

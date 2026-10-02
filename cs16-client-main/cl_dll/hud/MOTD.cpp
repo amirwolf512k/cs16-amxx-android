@@ -25,12 +25,74 @@
 #include "triangleapi.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "draw_util.h"
 #include "build.h"
 
 #if XASH_WIN32 == 1 || XASH_PSVITA == 1
 #define strcasestr strstr
+#define strncasecmp _strnicmp
 #endif
+
+// v22: strip HTML tags and entities so a MOTD can still be rendered as
+// plain HUD text when the engine's sandboxed WebView dialog is not
+// available (older engine, dialog failed, non-Android builds).
+static void MOTD_StripHTML( CUtlString &text )
+{
+	const char *src = text.String();
+	size_t n = strlen( src );
+	char *out = (char *)malloc( n + 1 );
+	size_t i = 0, o = 0;
+
+	if( !out )
+		return;
+
+	while( i < n && o < n )
+	{
+		if( src[i] == '<' )
+		{
+			const char *end = strchr( src + i, '>' );
+			const char *tag;
+			size_t taglen;
+
+			if( !end )
+				break; // unterminated tag, drop the rest
+
+			tag = src + i + 1;
+			taglen = (size_t)( end - tag );
+
+			// block-level tags act as line breaks in the plain-text view
+			if(( taglen >= 2 && !strncasecmp( tag, "br", 2 )) ||
+			   ( taglen >= 2 && !strncasecmp( tag, "/p", 2 )) ||
+			   ( taglen >= 2 && !strncasecmp( tag, "p>", 2 )) ||
+			   ( taglen >= 4 && !strncasecmp( tag, "/div", 4 )) ||
+			   ( taglen >= 3 && !strncasecmp( tag, "/tr", 3 )) ||
+			   ( taglen >= 2 && !strncasecmp( tag, "/h", 2 )))
+			{
+				if( o == 0 || out[o-1] != '\n' )
+					out[o++] = '\n';
+			}
+
+			i += taglen + 2; // skip past '>'
+			continue;
+		}
+
+		if( src[i] == '&' )
+		{
+			if( !strncasecmp( src + i, "&nbsp;", 6 )) { out[o++] = ' '; i += 6; continue; }
+			if( !strncasecmp( src + i, "&amp;", 5 )) { out[o++] = '&'; i += 5; continue; }
+			if( !strncasecmp( src + i, "&lt;", 4 )) { out[o++] = '<'; i += 4; continue; }
+			if( !strncasecmp( src + i, "&gt;", 4 )) { out[o++] = '>'; i += 4; continue; }
+			if( !strncasecmp( src + i, "&quot;", 6 )) { out[o++] = '"'; i += 6; continue; }
+		}
+
+		out[o++] = src[i++];
+	}
+
+	out[o] = '\0';
+	text.Set( out );
+	free( out );
+}
 
 int CHudMOTD :: Init( void )
 {
@@ -165,15 +227,20 @@ int CHudMOTD :: MsgFunc_MOTD( const char *pszName, int iSize, void *pbuf )
 
 	if ( is_finished )
 	{
-		// v20: hand HTML MOTDs to the engine for sandboxed WebView rendering
-		// (works for both the join MOTD from motd.txt and plugin show_motd
-		// HTML like top15). The HTML is delivered inside the user message
-		// itself, so the dialog never needs to read anything from addons/.
+		// v20/v22: hand HTML MOTDs to the engine for sandboxed WebView
+		// rendering (works for both the join MOTD from motd.txt and
+		// plugin show_motd HTML like top15). If the engine reports the
+		// dialog could not be shown, fall back to the classic HUD text
+		// renderer with tags stripped, so the MOTD is never lost.
 		if( gEngfuncs.pfnShowMOTD && MOTD_IsHTML( m_szMOTD.String() ))
 		{
-			gEngfuncs.pfnShowMOTD( m_szMOTD.String() );
-			Reset();
-			return 1;
+			if( gEngfuncs.pfnShowMOTD( m_szMOTD.String() ))
+			{
+				Reset();
+				return 1;
+			}
+
+			MOTD_StripHTML( m_szMOTD );
 		}
 
 		int length = 0;

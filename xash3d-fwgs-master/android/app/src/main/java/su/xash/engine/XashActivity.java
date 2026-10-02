@@ -259,17 +259,42 @@ public class XashActivity extends SDLActivity {
 	// JavaScript, DOM storage, content:// or network access at all.
 	// =====================================================================
 
-	/** Called from native (JNI) when a client MOTD contains HTML. */
-	public void showMOTD( final byte[] htmlBytes ) {
+	/** Called from native (JNI) when a client MOTD contains HTML.
+	 *  v22: runs the dialog creation synchronously on the UI thread and
+	 *  returns whether the dialog is actually on screen, so the client dll
+	 *  can fall back to the classic HUD text renderer when the WebView
+	 *  dialog cannot be shown. */
+	public boolean showMOTD( final byte[] htmlBytes ) {
+		final boolean[] shown = new boolean[1];
+		final java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch( 1 );
+
 		runOnUiThread( new Runnable() {
 			@Override
 			public void run() {
-				showMOTDOnUiThread( htmlBytes );
+				try {
+					shown[0] = showMOTDOnUiThread( htmlBytes );
+				} catch ( Throwable t ) {
+					Log.w( TAG, "showMOTD failed", t );
+					shown[0] = false;
+				} finally {
+					latch.countDown();
+				}
 			}
 		} );
+
+		try {
+			// the engine render thread blocks briefly here; the UI thread
+			// is independent, so this cannot deadlock
+			if ( !latch.await( 2, java.util.concurrent.TimeUnit.SECONDS ) )
+				return false;
+		} catch ( InterruptedException e ) {
+			return false;
+		}
+
+		return shown[0];
 	}
 
-	private void showMOTDOnUiThread( byte[] htmlBytes ) {
+	private boolean showMOTDOnUiThread( byte[] htmlBytes ) {
 		try {
 			if ( mMotdDialog != null ) {
 				mMotdDialog.dismiss();
@@ -335,8 +360,10 @@ public class XashActivity extends SDLActivity {
 
 			mMotdDialog = dialog;
 			dialog.show();
+			return true;
 		} catch ( Throwable t ) {
 			Log.w( TAG, "showMOTD failed", t );
+			return false;
 		}
 	}
 

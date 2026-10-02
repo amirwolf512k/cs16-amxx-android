@@ -37,6 +37,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #define MAX_PING 9.999f
 #define FILTER_MAX_MAPS 16
+// v22: browser tabs. The master query returns both Xash3D and GoldSrc
+// (original CS 1.6) servers; AddServerToList splits them into the Xash
+// and Gold tabs by the "gs" key of the server info string.
+#define TAB_XASH      0  // Xash3D servers
+#define TAB_GOLD      1  // original GoldSrc (Steam CS 1.6) servers
+#define TAB_FAVORITES 2
+#define TAB_HISTORY   3
 #define INTERNET_TAB_COUNT 4  // number of internet tabs; valid indices are 0..3
 
 class CMenuServerBrowser;
@@ -948,9 +955,9 @@ void CMenuServerBrowser::RefreshList()
 		if( m_iLastRefreshTab >= 0 && m_iLastRefreshTab < INTERNET_TAB_COUNT )
 			m_InternetServers[m_iLastRefreshTab].RemoveAll();
 
-		if( tabSwitch.GetState() == 2 )
+		if( tabSwitch.GetState() == TAB_FAVORITES )
 			QueryServerList( favoritesList );
-		else if( tabSwitch.GetState() == 3 )
+		else if( tabSwitch.GetState() == TAB_HISTORY )
 			QueryServerList( historyList );
 		else
 		{
@@ -1001,18 +1008,9 @@ void CMenuServerBrowser::ViewGameInfo()
 
 void CMenuServerBrowser::OnTabSwitch()
 {
-	int idx = tabSwitch.GetState();
-
-	switch( idx )
-	{
-	case 0: // Direct
-	case 1: // NAT
-		EngFuncs::CvarSetValue( "cl_nat", idx );
-		break;
-	default: // Favorites and History
-		EngFuncs::CvarSetValue( "cl_nat", 0.0f );
-		break;
-	}
+	// v22: NAT traversal is deprecated and the GoldSrc master is only
+	// queried without NAT, so cl_nat is always forced to 0 here
+	EngFuncs::CvarSetValue( "cl_nat", 0.0f );
 
 	ClearList();
 	// populate visible model from per-tab buffer so user sees cached results instantly
@@ -1085,9 +1083,9 @@ void CMenuServerBrowser::AddServer( void )
 	favoritesList.AddToTail( entry );
 
 	int previousTab = tabSwitch.GetState();
-	if( previousTab != 2 )
+	if( previousTab != TAB_FAVORITES )
 	{
-		tabSwitch.SetState( 2 );
+		tabSwitch.SetState( TAB_FAVORITES );
 	}
 
 	CUtlString fakeInfoString;
@@ -1096,8 +1094,8 @@ void CMenuServerBrowser::AddServer( void )
 	server_t serv( adr, fakeInfoString, false, true );
 	serv.UpdateData();
 	serv.SetPing( MAX_PING );
-	m_InternetServers[2].AddToTail( serv );
-	if( tabSwitch.GetState() == 2 )
+	m_InternetServers[TAB_FAVORITES].AddToTail( serv );
+	if( tabSwitch.GetState() == TAB_FAVORITES )
 	{
 		gameListModel.AddServerToList( adr, fakeInfoString, false );
 	}
@@ -1190,8 +1188,8 @@ void CMenuServerBrowser::_Init( void )
 	gameList.SetSize( -20, 465 );
 
 	tabSwitch.SetRect( 360, 230, -20, 32 );
-	tabSwitch.AddSwitch( L( "Direct" ));
-	tabSwitch.AddSwitch( "NAT", true ); // intentionally not localized; hidden, NAT support deprecated
+	tabSwitch.AddSwitch( L( "Xash" ));
+	tabSwitch.AddSwitch( L( "Gold" ));
 	tabSwitch.AddSwitch( L( "Favorites" ));
 	tabSwitch.AddSwitch( L( "History" ));
 	tabSwitch.eTextAlignment = QM_CENTER;
@@ -1551,15 +1549,16 @@ void CMenuServerBrowser::AddServerToList( netadr_t adr, const char *info )
 	{
 		switch( curTabVisible )
 		{
-		case 2:
-		case 3:
-			targetTab = curTabVisible;
+		case TAB_FAVORITES:
+			targetTab = TAB_FAVORITES;
+			break;
+		case TAB_HISTORY:
+			targetTab = TAB_HISTORY;
 			break;
 		default:
-			if( m_iLastRefreshTab != -1 )
-				targetTab = m_iLastRefreshTab;
-			else
-				targetTab = curTabVisible;
+			// v22: master query results are split by protocol: Xash3D
+			// servers go to the Xash tab, GoldSrc servers to the Gold tab
+			targetTab = !strcmp( Info_ValueForKey( info, "gs" ), "1" ) ? TAB_GOLD : TAB_XASH;
 			break;
 		}
 	}

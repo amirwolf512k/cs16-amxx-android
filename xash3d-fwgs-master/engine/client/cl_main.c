@@ -235,7 +235,21 @@ static void CL_CreateResourceList( void )
 	if( Q_strcmp( cl_logoext.string, "bmp" ) && Q_strcmp( cl_logoext.string, "png" ))
 		Cvar_DirectSet( &cl_logoext, "bmp" );
 
-	Q_snprintf( szFileName, sizeof( szFileName ), "logos/remapped.%s", cl_logoext.string );
+	// cs16-amxx-android v22: resolve the spray source the same way PC
+	// GoldSrc does. The logo the player chose (cl_logofile) is loaded
+	// straight from the logos/ folder; the menu-generated remapped file
+	// is kept as a fallback (Player Setup writes its recolored copy
+	// there). Nothing is force-applied as a default anymore.
+	Q_snprintf( szFileName, sizeof( szFileName ), "logos/%s.%s", cl_logofile.string, cl_logoext.string );
+
+	if( !FS_FileExists( szFileName, true ))
+	{
+		Q_snprintf( szFileName, sizeof( szFileName ), "logos/remapped.%s", cl_logoext.string );
+
+		if( !FS_FileExists( szFileName, true ))
+			return; // no logo chosen yet, nothing to upload
+	}
+
 	if( cls.net_protocol == PROTO_GOLDSRC )
 	{
 		CL_ConvertImageToWAD3( szFileName );

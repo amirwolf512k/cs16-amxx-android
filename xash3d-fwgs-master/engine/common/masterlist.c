@@ -773,5 +773,15 @@ void NET_InitMasters( void )
 	// FIXME: https raw.githubcontent source
 	// FIXME: cloudflare'd sources both HTTP and HTTPS
 
+	// cs16-amxx-android v22: query the original Valve GoldSrc master so
+	// real CS 1.6 servers appear in the client's "Gold" browser tab.
+	// Not marked save, so it is never persisted into xashcomm.lst.
+	{
+		master_t *gs_master = NET_AddMaster( "hl1master.steamcontent.com:27010" );
+
+		if( gs_master )
+			gs_master->gs = true;
+	}
+
 	NET_LoadMasters();
 }

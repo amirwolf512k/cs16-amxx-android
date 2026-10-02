@@ -1140,10 +1140,10 @@ static void Host_InitCommon( int argc, char **argv, const char *progname, qboole
 
 	Image_CheckPaletteQ1 ();
 
-	// cs16-amxx-android v21: credit banner, shown in the console for
-	// both valve and cstrike launches
+	// cs16-amxx-android v22: credit banner (English), shown in the
+	// console for both valve and cstrike launches
 	Con_Printf( "\n=============================================\n" );
-	Con_Printf( "  ویرایش شده توسط t.me/amir_wolf512\n" );
+	Con_Printf( "  Edited by t.me/amir_wolf512\n" );
 	Con_Printf( "=============================================\n" );
 
 	// NOTE: only once resource without which engine can't continue work

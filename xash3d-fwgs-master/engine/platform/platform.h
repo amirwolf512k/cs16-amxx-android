@@ -102,7 +102,7 @@ void Android_Init( void );
 void *Android_GetNativeObject( const char *name );
 int Android_GetKeyboardHeight( void );
 void Android_Shutdown( void );
-void Android_ShowMOTD( const char *html );
+qboolean Android_ShowMOTD( const char *html ); // v22: returns false when the dialog could not be shown
 #endif
 
 #if XASH_WIN32
