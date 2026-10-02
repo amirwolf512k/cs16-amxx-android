@@ -69,8 +69,15 @@ void UTIL_StringToLower(const char *str, char *buffer, size_t maxlength);
 	}
 
 #define CHECK_NONPLAYER(x) \
-	if (x < 1 || x <= gpGlobals->maxClients || x > gpGlobals->maxEntities) { \
+	if (x < 1 || x > gpGlobals->maxEntities) { \
 		MF_LogError(amx, AMX_ERR_NATIVE, "Non-player entity %d out of range", x); \
+		return 0; \
+	} else if (x <= gpGlobals->maxClients) { \
+		/* v29: legacy plugins (Zombie Plague et al) feed player indices \
+		 * into weapon-entity natives when their own pdata lookups \
+		 * mis-resolve on the arm64 layout. A hard error aborts the whole \
+		 * plugin callback every frame and kills infection/buy flows; \
+		 * degrade to 0 ("not a weapon entity") and let the plugin run. */ \
 		return 0; \
 	} else { \
 		if (FNullEnt(TypeConversion.id_to_edict(x))) { \

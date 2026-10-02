@@ -163,10 +163,51 @@ static cell AMX_NATIVE_CALL cs_get_weapon_id(AMX *amx, cell *params)
 
 	int index = params[1];
 
-	CHECK_NONPLAYER(index);
-	edict_t *pWeapon = TypeConversion.id_to_edict(index);
+	if (index < 1 || index > gpGlobals->maxEntities)
+	{
+		MF_LogError(amx, AMX_ERR_NATIVE, "Entity index %d out of range", index);
+		return 0;
+	}
 
-	return get_pdata<int>(pWeapon, m_iId);
+	edict_t *pEntity = TypeConversion.id_to_edict(index);
+
+	if (FNullEnt(pEntity))
+	{
+		return 0;
+	}
+
+	/* v29: legacy plugins frequently resolve the "current weapon entity"
+	 * through their own pdata math, which can mis-resolve to the player's
+	 * own index on arm64 layouts. Instead of aborting their callback with
+	 * "Non-player entity out of range", answer the question they are
+	 * really asking: which weapon is this player holding? */
+	if (index <= gpGlobals->maxClients)
+	{
+		if (!MF_IsPlayerIngame(index))
+		{
+			return 0;
+		}
+
+		GET_OFFSET("CBasePlayer", m_pActiveItem);
+
+		void *pItem = get_pdata<void *>(pEntity, m_pActiveItem);
+
+		if (!pItem)
+		{
+			return 0;
+		}
+
+		edict_t *pItemEnt = TypeConversion.cbase_to_edict(pItem);
+
+		if (FNullEnt(pItemEnt))
+		{
+			return 0;
+		}
+
+		return get_pdata<int>(pItemEnt, m_iId);
+	}
+
+	return get_pdata<int>(pEntity, m_iId);
 }
 
 // native cs_set_weapon_silen(index, silence = 1, draw_animation = 1);

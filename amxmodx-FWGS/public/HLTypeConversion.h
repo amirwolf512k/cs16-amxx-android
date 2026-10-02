@@ -163,13 +163,26 @@ class HLTypeConversion
 				return -1;
 			}
 
-			int id = entvars_to_id(cbase_to_entvar(cbase));
+			/* v29: exact table match first. pvPrivateData is the direct
+			 * inverse of id_to_cbase() and cannot be fooled by a garbage
+			 * pointer read from a mis-translated pdata offset. The pev
+			 * chain alone used to resolve such reads to arbitrary small
+			 * entity ids (players 1..10), which then hit weapon-entity
+			 * natives as fake entities and error-spammed legacy plugins
+			 * (Zombie Plague) into a broken state. */
+			int id = scan_entity_id(cbase);
 			if (id >= 0)
 			{
 				return id;
 			}
 
-			return scan_entity_id(cbase);
+			id = entvars_to_id(cbase_to_entvar(cbase));
+			if (id >= 0 && id_to_cbase(id) == cbase)
+			{
+				return id;
+			}
+
+			return -1;
 		}
 
 	public:

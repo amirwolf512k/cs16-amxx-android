@@ -16,6 +16,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings.Secure;
+import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
@@ -356,15 +357,34 @@ public class XashActivity extends SDLActivity {
                         // height like CS does for widescreen; falls back to
                         // the PC default window when the .res is absent.
                         MotdLayout lay = parseMotdRes( gameDir );
+
+                        // v29: phones are widescreen; scaling the 4:3 PC
+                        // window by height alone left huge empty margins on
+                        // the sides. Keep the .res proportions but guarantee
+                        // a wide panel (74%..94% of the screen width) and
+                        // cap the height at 86% of the screen.
                         float scale = screenH / 480f;
                         int panelW = Math.round( lay.frameW * scale );
+                        int minW = Math.round( screenW * 0.74f );
+                        int maxW = Math.round( screenW * 0.94f );
+
+                        if ( panelW < minW )
+                        {
+                                scale = ( float ) minW / lay.frameW;
+                                panelW = minW;
+                        }
+
+                        if ( panelW > maxW )
+                        {
+                                scale = ( float ) maxW / lay.frameW;
+                                panelW = maxW;
+                        }
+
                         int panelH = Math.round( lay.frameH * scale );
 
-                        if ( panelW > Math.round( screenW * 0.92f ))
+                        if ( panelH > Math.round( screenH * 0.86f ))
                         {
-                                scale = ( screenW * 0.92f ) / lay.frameW;
-                                panelW = Math.round( lay.frameW * scale );
-                                panelH = Math.round( lay.frameH * scale );
+                                panelH = Math.round( screenH * 0.86f );
                         }
 
                         // --- v27: PC CS 1.6 window — rounded near-black panel,
@@ -387,12 +407,13 @@ public class XashActivity extends SDLActivity {
                         int logoSize = dp( 48 );
 
                         TextView title = new TextView( this );
-                        title.setText( "Message of the Day" );
+                        title.setText( buildMOTDTitle( raw ));
                         title.setTextColor( MOTD_GOLD );
-                        title.setTextSize( TypedValue.COMPLEX_UNIT_SP, 22 );
+                        title.setTextSize( TypedValue.COMPLEX_UNIT_SP, 15 );
                         title.setTypeface( Typeface.DEFAULT_BOLD );
                         title.setLetterSpacing( 0.02f );
                         title.setSingleLine( true );
+                        title.setEllipsize( TextUtils.TruncateAt.END );
                         title.setGravity( Gravity.CENTER_VERTICAL );
 
                         LinearLayout header = new LinearLayout( this );
@@ -453,12 +474,12 @@ public class XashActivity extends SDLActivity {
                                         && !lay.okLabel.startsWith( "#" )) ? lay.okLabel : "OK" );
                         ok.setAllCaps( false );
                         ok.setTextColor( MOTD_GOLD );
-                        ok.setTextSize( TypedValue.COMPLEX_UNIT_SP, 18 );
+                        ok.setTextSize( TypedValue.COMPLEX_UNIT_SP, 14 );
                         ok.setTypeface( Typeface.DEFAULT_BOLD );
                         ok.setBackground( makeMOTDButtonBackground() );
                         ok.setStateListAnimator( null );
                         ok.setElevation( 0f );
-                        ok.setPadding( dp( 24 ), 0, dp( 24 ), 0 );
+                        ok.setPadding( dp( 16 ), 0, dp( 16 ), 0 );
                         ok.setOnClickListener( new View.OnClickListener() {
                                         @Override
                                         public void onClick( View v ) {
@@ -469,9 +490,11 @@ public class XashActivity extends SDLActivity {
                         // PC proportions from MOTD.res, but at least 42% of the
                         // content width (>=190dp) and a generous touch height —
                         // the user asked for a visibly wider, taller OK
+                        // v29: compact OK per user feedback (>=26% of the
+                        // content width, 110dp floor, 40dp touch height)
                         int okW = Math.max( Math.round( lay.okW * scale ),
-                                Math.max( dp( 190 ), Math.round( bodyW * 0.42f )));
-                        int okH = Math.max( dp( 52 ), Math.round( lay.okH * scale ));
+                                Math.max( dp( 110 ), Math.round( bodyW * 0.26f )));
+                        int okH = Math.max( dp( 40 ), Math.round( lay.okH * scale ));
 
                         LinearLayout footer = new LinearLayout( this );
                         footer.setOrientation( LinearLayout.HORIZONTAL );
@@ -498,6 +521,30 @@ public class XashActivity extends SDLActivity {
                         Log.w( TAG, "showMOTD failed", t );
                         return false;
                 }
+        }
+
+        /** v29: the header shows the MOTD's own first line (HTML tags
+         *  stripped, whitespace collapsed; the TextView ellipsises). */
+        private static String buildMOTDTitle( String raw ) {
+                if ( raw == null ) {
+                        return "Message of the Day";
+                }
+
+                String s = raw.replaceAll( "(?is)<[^>]*>", " " );
+                s = s.replace( "&nbsp;", " " ).replace( "&amp;", "&" );
+                s = s.replace( "&lt;", "<" ).replace( "&gt;", ">" );
+                s = s.replace( "&quot;", "\"" ).replace( "&#39;", "'" );
+                s = s.replaceAll( "\\s+", " " ).trim();
+
+                if ( s.length() > 48 ) {
+                        s = s.substring( 0, 48 ).trim();
+                }
+
+                if ( s.isEmpty() ) {
+                        return "Message of the Day";
+                }
+
+                return s;
         }
 
         /** v25: build the document loaded into the MOTD WebView. HTML pages
