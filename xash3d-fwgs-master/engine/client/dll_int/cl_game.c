@@ -3771,7 +3771,9 @@ static int GAME_EXPORT pfnShowMOTD( const char *html )
 		return true;
 
 #if XASH_ANDROID
-	if( Android_ShowMOTD( html ))
+	// v30: the server name is the window title, exactly like the
+	// original HL1 VGUI MOTD window (CreateTextWindow/SHOW_MOTD)
+	if( Android_ShowMOTD( cls.servername, html ))
 		return true;
 
 	// v22: the dialog could not be shown (WebView missing, activity

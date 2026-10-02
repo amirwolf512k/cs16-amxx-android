@@ -52,7 +52,9 @@ void Android_Init( void )
 	jni.loadAndroidID = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadAndroidID", "()Ljava/lang/String;" );
 	jni.getAndroidID = (*jni.env)->GetMethodID( jni.env, jni.actcls, "getAndroidID", "()Ljava/lang/String;" );
 	jni.saveAndroidID = (*jni.env)->GetMethodID( jni.env, jni.actcls, "saveAndroidID", "(Ljava/lang/String;)V" );
-	jni.showMOTD = (*jni.env)->GetMethodID( jni.env, jni.actcls, "showMOTD", "([B)Z" );
+	// v30: (title, html) both as raw byte arrays, so a malformed
+	// server string can never abort NewStringUTF
+	jni.showMOTD = (*jni.env)->GetMethodID( jni.env, jni.actcls, "showMOTD", "([B[B)Z" );
 
 	// v21: a failed lookup leaves a pending exception; clear it so
 	// nothing downstream (filesystem assets, SDL) trips over it
@@ -127,26 +129,42 @@ cs16-amxx-android v20: render an HTML MOTD in a sandboxed WebView dialog
 managed by the activity. The payload is passed as a raw byte array so a
 malformed (non-modified-UTF-8) server string can't abort in NewStringUTF;
 Java decodes it as UTF-8 with replacement characters.
+v30: takes the window title (server name) as a second argument, exactly
+like the original HL1 VGUI MOTD window (vgui_MOTDWindow.cpp).
 ========================
 */
-qboolean Android_ShowMOTD( const char *html )
+qboolean Android_ShowMOTD( const char *title, const char *html )
 {
 	size_t len;
-	jbyteArray jbytes;
+	jbyteArray jbytes, jtitle;
 	jboolean shown;
 
 	if( !jni.env || !jni.activity || !jni.showMOTD )
 		return false;
 
+	// v30: the window title (server name, like the original HL1
+	// VGUI MOTD window) is passed as a second raw byte array
+	len = Q_strlen( title );
+	jtitle = (*jni.env)->NewByteArray( jni.env, (jsize)len );
+
+	if( !jtitle )
+		return false;
+
+	(*jni.env)->SetByteArrayRegion( jni.env, jtitle, 0, (jsize)len, (const jbyte *)title );
+
 	len = Q_strlen( html );
 	jbytes = (*jni.env)->NewByteArray( jni.env, (jsize)len );
 
 	if( !jbytes )
+	{
+		(*jni.env)->DeleteLocalRef( jni.env, jtitle );
 		return false;
+	}
 
 	(*jni.env)->SetByteArrayRegion( jni.env, jbytes, 0, (jsize)len, (const jbyte *)html );
-	shown = (*jni.env)->CallBooleanMethod( jni.env, jni.activity, jni.showMOTD, jbytes );
+	shown = (*jni.env)->CallBooleanMethod( jni.env, jni.activity, jni.showMOTD, jtitle, jbytes );
 	(*jni.env)->DeleteLocalRef( jni.env, jbytes );
+	(*jni.env)->DeleteLocalRef( jni.env, jtitle );
 
 	if( shown )
 		g_motd_dialog_open = true; // v24
