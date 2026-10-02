@@ -58,13 +58,13 @@ Xash3D FWGS (AMXX patch in engine/common/lib_common.c)
 
 Pawn cells are 32-bit while arm64 pointers are 64-bit — handled by pointer side-table patches in `amx.cpp`.
 
-Modules (arm64 + armv7a): amxmodx, engine, fun, fakemeta, cstrike, csx, nvault, sockets, regex, geoip, sqlite, json, hamsandwich.
+Modules (arm64 + armv7a): amxmodx, engine, fun, fakemeta, cstrike, csx, nvault, sockets, regex, geoip, sqlite, json, hamsandwich, cs_ham_bots_api.
 
 ## What changed / added (summary)
 
 - Full AMX Mod X + Metamod chain running inside the game on Android, with an on-device `.sma` compiler (`libamxxpc`).
-- 13 AMXX modules for ARM64 + ARMv7, including hand-built hamsandwich ARM trampolines and regex/geoip/json/sqlite.
-- **HTML MOTD like PC**: rendered in a sandboxed WebView dialog with an **OK button at the bottom** (covers `motd.txt` and `/top15`), with a plain-text fallback if the dialog can't be shown; the team select menu now appears only **after** the MOTD is closed, exactly like PC; complete `motd.txt` sample included in both packages.
+- 14 AMXX modules for ARM64 + ARMv7, including hand-built hamsandwich ARM trampolines, regex/geoip/json/sqlite and **cs_ham_bots_api** (zombie plague mods now load).
+- **MOTD window like PC**: drawn in the same VGUI style as the team select menu (same size, dark panel, gold header) with an **OK button in the bottom-left corner** exactly like the PC CS 1.6 window; **every** MOTD opens it — HTML pages render fully in the sandboxed WebView and plain-text MOTDs are styled like the game (black background, gold monospace); plain-text HUD fallback only if the window can't be shown; the team select menu appears only **after** the MOTD is closed; complete `motd.txt` sample included in both packages.
 - **Spray logo done right**: `logos/<cl_logofile>` loaded from the `logos/` folder (no forced default); `AmirWolf512` ships as a **PNG** like the built-in neocat/fwgs/blobfox/neofox logos, so the spray color option can no longer tint it (BMP logos stay colorable); indexed logos also pack as full-color WAD3 decals instead of the old monochrome gradient.
 - **Voice privacy**: the microphone opens only while `+voicerecord` is held (no permanent "sending voice" indicator).
 - **Server browser**: `Xash | Gold | Favorites | History` tabs — the Gold list queries live community GoldSrc master servers (`ms1.cs-exes.ru`, `valve-master-server.com`, `ms2.cs-best.org.ua`, `ms.cs16.net`) with the real A2M protocol, since Valve shut their master down; hundreds of CS 1.6 servers show up.

@@ -28,6 +28,9 @@ include $(AMXXROOT)/modules/geoip/Android.mk
 include $(AMXXROOT)/modules/sqlite/Android.mk
 include $(AMXXROOT)/modules/json/Android.mk
 include $(AMXXROOT)/modules/hamsandwich/Android.mk
+# v25: library anchor for the cs_ham_bots_api library (zombie plague mods);
+# natives come from the staged Pawn plugin cs_ham_bots_api.amxx
+include $(AMXXROOT)/modules/cs_ham_bots_api/Android.mk
 
 $(call import-add-path,$(AMXXROOT))
 $(call import-module,third_party)
