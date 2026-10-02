@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
 
         // bump this when assets/addons.zip is updated so the bundle
         // gets re-extracted into the game directory
-        private static final String ADDONS_VERSION = "amxx-v22-repo";
+        private static final String ADDONS_VERSION = "amxx-v23-repo";
 
         private boolean mPermissionAsked = false;
 
@@ -34,6 +34,13 @@ public class MainActivity extends Activity {
 
                 mPermissionAsked = savedInstanceState != null
                         && savedInstanceState.getBoolean( "permission_asked", false );
+
+                // v23 fix: ask at most once per install - remembering the
+                // flag across launches stops the per-launch dialog nagging
+                if( !mPermissionAsked ) {
+                        mPermissionAsked = getPreferences( MODE_PRIVATE )
+                                .getBoolean( "permission_asked", false );
+                }
 
                 if( !hasStorageAccess() ) {
                         if( !mPermissionAsked ) {
@@ -127,6 +134,8 @@ public class MainActivity extends Activity {
         }
 
         private void requestStorageAccess() {
+                getPreferences( MODE_PRIVATE ).edit().putBoolean( "permission_asked", true ).apply();
+
                 if( Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ) {
                         try {
                                 Intent intent = new Intent( Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,

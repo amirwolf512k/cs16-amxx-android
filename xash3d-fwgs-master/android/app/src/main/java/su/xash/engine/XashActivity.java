@@ -285,7 +285,7 @@ public class XashActivity extends SDLActivity {
 		try {
 			// the engine render thread blocks briefly here; the UI thread
 			// is independent, so this cannot deadlock
-			if ( !latch.await( 2, java.util.concurrent.TimeUnit.SECONDS ) )
+			if ( !latch.await( 5, java.util.concurrent.TimeUnit.SECONDS ) )
 				return false;
 		} catch ( InterruptedException e ) {
 			return false;
@@ -328,17 +328,6 @@ public class XashActivity extends SDLActivity {
 			bar.addView( title, new LinearLayout.LayoutParams(
 					0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f ) );
 
-			Button close = new Button( this );
-			close.setText( "Close" );
-			close.setOnClickListener( new View.OnClickListener() {
-				@Override
-				public void onClick( View v ) {
-					dialog.dismiss();
-				}
-			} );
-			bar.addView( close, new LinearLayout.LayoutParams(
-					ViewGroup.LayoutParams.WRAP_CONTENT,
-					ViewGroup.LayoutParams.WRAP_CONTENT ) );
 
 			// --- sandboxed WebView ------------------------------------
 			WebView wv = createMOTDWebView( gameDir );
@@ -349,6 +338,27 @@ public class XashActivity extends SDLActivity {
 					ViewGroup.LayoutParams.WRAP_CONTENT ) );
 			root.addView( wv, new LinearLayout.LayoutParams(
 					ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f ) );
+			// --- bottom bar: OK button, like the PC CS 1.6 MOTD window ---
+			LinearLayout bottom = new LinearLayout( this );
+			bottom.setOrientation( LinearLayout.HORIZONTAL );
+			bottom.setGravity( Gravity.CENTER );
+			bottom.setPadding( dp( 8 ), dp( 4 ), dp( 8 ), dp( 8 ) );
+			
+			Button ok = new Button( this );
+			ok.setText( "OK" );
+			ok.setOnClickListener( new View.OnClickListener() {
+					@Override
+					public void onClick( View v ) {
+						dialog.dismiss();
+					}
+			} );
+			bottom.addView( ok, new LinearLayout.LayoutParams(
+						ViewGroup.LayoutParams.WRAP_CONTENT,
+						ViewGroup.LayoutParams.WRAP_CONTENT ) );
+			
+			root.addView( bottom, new LinearLayout.LayoutParams(
+						ViewGroup.LayoutParams.MATCH_PARENT,
+						ViewGroup.LayoutParams.WRAP_CONTENT ) );
 
 			dialog.setContentView( root );
 			dialog.setOnDismissListener( new DialogInterface.OnDismissListener() {

@@ -14,6 +14,7 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -37,7 +38,7 @@ class LibraryFragment : Fragment(), MenuProvider {
 
 	private val startActivityForResult =
 		registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-			if (checkStoragePermissions()) {
+			if (checkStoragePermissions(prompt = false)) {
 				libraryViewModel.reloadGames(requireContext())
 			}
 		}
@@ -54,13 +55,21 @@ class LibraryFragment : Fragment(), MenuProvider {
 		if (granted) {
 			libraryViewModel.reloadGames(requireContext())
 		} else {
-			checkStoragePermissions()
+			// v23 fix: never automatically re-request after a denial
+			// (this used to loop the system permission dialog)
+			Toast.makeText(requireContext(), R.string.file_access_message, Toast.LENGTH_LONG).show()
 		}
 	}
 
-	private fun checkStoragePermissions(): Boolean {
+	private fun checkStoragePermissions( prompt: Boolean = true ): Boolean {
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-			if (!Environment.isExternalStorageManager()) {
+			if (Environment.isExternalStorageManager()) {
+				return true
+			}
+
+			// v23 fix: show the blocking dialog at most once per session
+			// (onResume / onActivityResult used to re-show it in a loop)
+			if (prompt) {
 				MaterialAlertDialogBuilder(requireContext()).apply {
 					setTitle(R.string.file_access_required)
 					setMessage(R.string.file_access_message)
@@ -72,16 +81,14 @@ class LibraryFragment : Fragment(), MenuProvider {
 						)
 					}
 					setNeutralButton(R.string.done_check_permissions) { dialog, _ ->
-						checkStoragePermissions()
+						dialog.dismiss()
 					}
 					setCancelable(false)
 					show()
-
-					return false
 				}
-			} else {
-				return true
 			}
+
+			return false
 		} else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
 			val permissionsNeeded = requiredPermissions.filter {
 				ContextCompat.checkSelfPermission(
@@ -91,30 +98,32 @@ class LibraryFragment : Fragment(), MenuProvider {
 			}.toTypedArray()
 
 			if (!permissionsNeeded.isEmpty()) {
-				val showRationale = permissionsNeeded.any {
-					ActivityCompat.shouldShowRequestPermissionRationale(requireActivity(), it)
-				}
+				if (prompt) {
+					val showRationale = permissionsNeeded.any {
+						ActivityCompat.shouldShowRequestPermissionRationale(requireActivity(), it)
+					}
 
-				MaterialAlertDialogBuilder(requireContext()).apply {
-					setTitle(R.string.external_storage_required)
-					setMessage(R.string.external_storage_message)
-					setPositiveButton(R.string.open_settings) { _, _ ->
-						if (showRationale) {
-							requestPermissionLauncher.launch(permissionsNeeded)
-						} else {
-							val intent =
-								Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-									data =
-										Uri.fromParts("package", requireContext().packageName, null)
-								}
-							startActivity(intent)
+					MaterialAlertDialogBuilder(requireContext()).apply {
+						setTitle(R.string.external_storage_required)
+						setMessage(R.string.external_storage_message)
+						setPositiveButton(R.string.open_settings) { _, _ ->
+							if (showRationale) {
+								requestPermissionLauncher.launch(permissionsNeeded)
+							} else {
+								val intent =
+									Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+										data =
+											Uri.fromParts("package", requireContext().packageName, null)
+									}
+								startActivity(intent)
+							}
 						}
+						setNeutralButton(R.string.done_check_permissions) { dialog, _ ->
+							dialog.dismiss()
+						}
+						setCancelable(false)
+						show()
 					}
-					setNeutralButton(R.string.done_check_permissions) { _, _ ->
-						checkStoragePermissions()
-					}
-					setCancelable(false)
-					show()
 				}
 
 				return false
@@ -150,9 +159,11 @@ class LibraryFragment : Fragment(), MenuProvider {
 			(binding.gamesList.adapter as GameAdapter).submitList(it)
 		}
 
-		if (checkStoragePermissions()) {
-			libraryViewModel.reloadGames(requireContext())
-		}
+	if (!checkStoragePermissions(prompt = !promptedForStorage)) {
+		promptedForStorage = true
+	} else {
+		libraryViewModel.reloadGames(requireContext())
+	}
 	}
 
 	override fun onDestroyView() {
@@ -177,8 +188,10 @@ class LibraryFragment : Fragment(), MenuProvider {
 	override fun onResume() {
 		super.onResume()
 
-		if (checkStoragePermissions()) {
-			libraryViewModel.reloadGames(requireContext())
-		}
+	if (!checkStoragePermissions(prompt = !promptedForStorage)) {
+		promptedForStorage = true
+	} else {
+		libraryViewModel.reloadGames(requireContext())
+	}
 	}
 }

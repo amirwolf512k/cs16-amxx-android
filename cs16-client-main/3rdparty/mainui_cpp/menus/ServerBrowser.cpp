@@ -942,6 +942,11 @@ void CMenuServerBrowser::QueryServerList( const CUtlVector<favlist_entry_t> &lis
 
 void CMenuServerBrowser::RefreshList()
 {
+	// v23 fix: the GoldSrc master is only queried without NAT; force
+	// cl_nat off here too, not only in OnTabSwitch (auto refresh used to
+	// run a whole session with a stale cl_nat=1 from saved cvars)
+	EngFuncs::CvarSetValue( "cl_nat", 0.0f );
+
 	gameListModel.serversRefreshTime = EngFuncs::DoubleTime();
 
 	if( m_bLanOnly )
@@ -1022,6 +1027,15 @@ void CMenuServerBrowser::OnTabSwitch()
 		// re-add entries via model to apply filters and update UI controls
 		gameListModel.AddServerToList( m_InternetServers[newTab][i].adr, m_InternetServers[newTab][i].info, m_InternetServers[newTab][i].favorite );
 	}
+	// v23 fix: a tab opened with an empty cache must never swallow the
+	// refresh behind the refreshTime2 rate limit (first visit to the
+	// Gold tab used to stay empty for up to 20 seconds)
+	if( newTab == TAB_XASH || newTab == TAB_GOLD )
+	{
+		if( m_InternetServers[newTab].Count() == 0 )
+			refreshTime2 = 0.0;
+	}
+
 	RefreshList();
 }
 

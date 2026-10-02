@@ -165,7 +165,22 @@ static qboolean NET_SendToMasters( netsrc_t sock, size_t len, const void *data, 
 			break;
 		case NET_EAI_OK:
 			master->sent = true;
-			NET_SendPacket( sock, len, data, master->adr );
+
+			if( proto == PROTO_GOLDSRC )
+			{
+				// cs16-amxx-android v23 fix: the Valve GoldSrc master
+				// requires the 0xFFFFFFFF connectionless header; only the
+				// Xash master tolerates its absence
+				byte oob[516];
+
+				oob[0] = oob[1] = oob[2] = oob[3] = 0xff;
+				memcpy( oob + 4, data, len );
+				NET_SendPacket( sock, len + 4, oob, master->adr );
+			}
+			else
+			{
+				NET_SendPacket( sock, len, data, master->adr );
+			}
 			break;
 		}
 	}

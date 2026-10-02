@@ -2882,6 +2882,35 @@ static void CL_ConnectionlessPacket( netadr_t from, sizebuf_t *msg )
 	MSG_Clear( msg );
 	MSG_ReadLong( msg ); // skip the -1
 
+	// cs16-amxx-android v23 fix: the Valve GoldSrc master (hl1master)
+	// answers "-1 \r\n [\r\n] <ip:port list>" - there is no "f" line like
+	// the Xash master sends, so the string dispatch below never matched
+	// and such replies were silently dropped (Gold tab stayed empty).
+	// Route replies from known GoldSrc masters straight to the parser.
+	{
+		connprotocol_t mproto;
+
+		if( NET_IsMasterAdr( from, &mproto ) && mproto == PROTO_GOLDSRC )
+		{
+			const byte *raw = (const byte *)msg->pData;
+			int skip = 0;
+
+			while( skip < 4 )
+			{
+				int b = raw[4 + skip];
+
+				if( b != '\r' && b != '\n' )
+					break;
+
+				MSG_ReadByte( msg );
+				skip++;
+			}
+
+			CL_ServerList( from, msg );
+			return;
+		}
+	}
+
 	args = MSG_ReadStringLine( msg );
 
 	Cmd_TokenizeString( args );
