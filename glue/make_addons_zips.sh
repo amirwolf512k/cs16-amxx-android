@@ -74,12 +74,18 @@ mv "$OUT/stage-cstrike/addons" "$OUT/stage-cstrike/cstrike/addons"
 mkdir -p "$OUT/stage-valve/valve"
 mv "$OUT/stage-valve/addons" "$OUT/stage-valve/valve/addons"
 
-# v20: player spray logo. The engine reads logos/remapped.bmp (GoldSrc
-# convention) on every connect and converts it to tempdecal.wad; colors
-# are preserved — no tinting/recoloring.
+# v20/v22: player spray logo. The engine reads logos/<cl_logofile> (PC
+# GoldSrc convention) on every connect and converts it to tempdecal.wad;
+# the file ships as logos/AmirWolf512.bmp so it shows up in the Options
+# logo picker; colors are preserved — no tinting/recoloring.
 for GAME in cstrike valve; do
         if [ -d "$OUT/stage-$GAME/logos" ]; then
                 mv "$OUT/stage-$GAME/logos" "$OUT/stage-$GAME/$GAME/logos"
+        fi
+        # v22: complete motd.txt sample into the game dir root; servers
+        # send it to joining players, exactly like PC CS 1.6
+        if [ -f "$OUT/stage-$GAME/motd.txt" ]; then
+                mv "$OUT/stage-$GAME/motd.txt" "$OUT/stage-$GAME/$GAME/motd.txt"
         fi
 done
 
