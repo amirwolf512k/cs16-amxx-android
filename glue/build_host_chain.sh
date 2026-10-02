@@ -57,26 +57,36 @@ $CXX $COMMON -shared -o "$OUT/libmm_amxmodx.so" $CORE_O $THIRDPARTY_O -lz -lpthr
 echo "  => $OUT/libmm_amxmodx.so"
 
 echo "== building modules =="
-build_module() { # <name> <dir> <srcs...>
+build_module() { # <name> <dir> <srcs...>  (MODULE_CFLAGS may hold extra flags)
         local name=$1 dir=$2; shift 2
-        local objs=""
+        local objs="" src=""
         mkdir -p "$OUT/obj_$name"
         # SDK glue + detour machinery is part of every module (matches the
         # Android AMBuild: engine module dlopens only if CDetourManager is in)
         set -- "$@" amxxmodule MemoryUtils detours asm
         for s in "$@"; do
-                for src in "$AMXX/modules/$dir/$s.cpp" "$AMXX/public/sdk/$s.cpp" \
-                           "$AMXX/public/memtools/$s.cpp" \
-                           "$AMXX/public/memtools/CDetour/$s.cpp" \
-                           "$AMXX/public/memtools/CDetour/asm/$s.c" \
-                           "$AMXX/public/memtools/MemoryUtils.cpp"; do
-                        if [ -f "$src" ]; then
-                                o="$OUT/obj_$name/$(basename $s)_$name.o"
-                                $CXX $COMMON -I"$AMXX/modules/$dir" -c -o "$o" "$src"
-                                objs="$objs $o"
-                                break
-                        fi
-                done
+                src=""
+                if [ -f "$s" ]; then
+                        src="$s"          # v25: absolute paths (trampoline shim)
+                else
+                        for cand in "$AMXX/modules/$dir/$s.cpp" "$AMXX/public/sdk/$s.cpp" \
+                                    "$AMXX/public/memtools/$s.cpp" \
+                                    "$AMXX/public/memtools/CDetour/$s.cpp" \
+                                    "$AMXX/public/memtools/CDetour/asm/$s.c" \
+                                    "$AMXX/public/memtools/MemoryUtils.cpp"; do
+                                if [ -f "$cand" ]; then
+                                        src="$cand"
+                                        break
+                                fi
+                        done
+                fi
+                if [ -n "$src" ]; then
+                        o="$OUT/obj_$name/$(basename $s)_$name.o"
+                        $CXX $COMMON $MODULE_CFLAGS -I"$AMXX/modules/$dir" -c -o "$o" "$src"
+                        objs="$objs $o"
+                else
+                        echo "  !! $name: source for '$s' not found, skipped" >&2
+                fi
         done
         $CXX $COMMON -shared -o "$OUT/modules/libamxx_$name.so" $objs $THIRDPARTY_O
         echo "  => libamxx_$name.so"
@@ -89,6 +99,18 @@ build_module cstrike cstrike/cstrike CstrikeHacks CstrikeItemsInfos CstrikeMain 
 build_module csx cstrike/csx CMisc CRank meta_api rank usermsg
 build_module nvault nvault Binary Journal NVault amxxapi
 build_module sockets sockets sockets
+
+# v25: hamsandwich on the host — uses the same hand-written libffcall-
+# compatible trampoline shim as Android (ARM machine code; on non-ARM
+# hosts alloc_trampoline returns NULL and hooks are skipped gracefully)
+MODULE_CFLAGS="-DUSE_LIBFFCALL -I$HERE/trampoline" \
+        build_module hamsandwich hamsandwich amxx_api config_parser \
+        hook_callbacks hook_native srvcmd call_funcs hook_create \
+        DataHandler pdata hook_specialbot "$HERE/trampoline/trampoline.c"
+
+# v25: cs_ham_bots_api library-anchor module (zombie plague mods; the
+# natives live in hamsandwich + the staged cs_ham_bots_api.amxx plugin)
+build_module cs_ham_bots_api cs_ham_bots_api amxxapi
 
 echo "== building metamod (host) =="
 MMSRC="$ROOT/metamod-p-velaron/metamod"
