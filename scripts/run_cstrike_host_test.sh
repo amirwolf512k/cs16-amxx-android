@@ -37,9 +37,10 @@ cp "$HOST/libmm_amxmodx.so" "$C/addons/amxmodx/dlls/"
 cp "$HOST"/modules/libamxx_*.so "$C/addons/amxmodx/modules/"
 cp "$HOST/libmetamod_android_$ARCH.so" "$C/addons/metamod/dlls/libmetamod_android_amd64.so"
 
-# battery plugin first so it controls the session
+# staged ini line 1 block = cvar_compat.amxx; diagnostics run right after it
 cp "$ROOT/battery_test_host.amxx" "$C/addons/amxmodx/plugins/"
-sed -i '1i battery_test_host.amxx' "$C/addons/amxmodx/configs/plugins.ini"
+cp "$ROOT/scripts/cvar_suite.amxx" "$C/addons/amxmodx/plugins/"
+sed -i '/^cvar_compat\.amxx$/a cvar_suite.amxx\nbattery_test_host.amxx' "$C/addons/amxmodx/configs/plugins.ini"
 
 # v32: statsx registers Ham_Spawn via hamdata.ini vtable offsets that do not
 # match the locally built ReGameDLL (device arm64 gamedll is verified fine) —
@@ -176,7 +177,15 @@ PASS=1; FAIL=""
 grep -aq "HAM PROBE FIRED" console.txt   || { PASS=0; FAIL="$FAIL ham-probe-never-fired"; }
 grep -aq "\[HAM\] hooked player::spawn" console.txt || { PASS=0; FAIL="$FAIL ham-spawn-not-hooked"; }
 grep -aq "Crash: signal\|SIGSEGV\|Segmentation" console.txt && { PASS=0; FAIL="$FAIL CRASH"; }
-grep -aq "Run time error" console.txt && { PASS=0; FAIL="$FAIL amxx-runtime-error"; }
+# v35: the cvar suite deliberately triggers one runtime error (null-handle
+# probe); any OTHER runtime error still fails the run
+grep -a "Run time error" console.txt | grep -avq "Invalid CVAR pointer (handle 0) used in native \"get_pcvar_num\"" && { PASS=0; FAIL="$FAIL amxx-runtime-error"; }
+# v35: cvar compat + full cvar surface gate
+grep -aq "CVAR] 3 compat ptrs: bot_quota=[1-9]" console.txt || { PASS=0; FAIL="$FAIL cvar-compat-broken"; }
+grep -aq "CVAR] 5 string: 'hello'" console.txt   || { PASS=0; FAIL="$FAIL cvar-string-fail"; }
+# informational: cvar-change HOOKS (hook_cvar_change) need the Cvar_DirectSet
+# memory signature which the Xash engine gamedata does not provide (ZP does
+# not use them); the rest of the cvar surface IS gated above.
 # informational: the fake client never runs the jointeam flow, so ZP
 # calibration (mode=1) usually doesn't trigger here -- it happens on real
 # joins via the TeamInfo string oracle.

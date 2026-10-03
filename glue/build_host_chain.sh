@@ -112,9 +112,14 @@ build_module sockets sockets sockets
 # v32: hamsandwich on the host -- on x86_64 use the upstream generic
 # trampoline (Trampolines.h) so hooks are REAL; on arm64 hosts (CI) keep
 # the hand-written ARM libffcall shim (the generic emitter is x86-only)
+# v35: the x86_64 host builds the v33 hook_callbacks.cpp. The v34 rewrite
+# (per-callback `Hook *hook = ::hook;` snapshots + gDoForwards reentrancy
+# restructure) was written for and is verified on the libffcall/Android
+# path only; compiled in generic-trampoline mode it segfaults inside
+# SV_FakeConnect on the host. The Android (device) build is untouched.
 if [ "$BUILD" = "x86_64" ]; then
         build_module hamsandwich hamsandwich amxx_api config_parser \
-                hook_callbacks hook_native srvcmd call_funcs hook_create \
+                "$HERE/host_v33_hook_callbacks.cpp" hook_native srvcmd call_funcs hook_create \
                 DataHandler pdata hook_specialbot
 else
         MODULE_CFLAGS="-DUSE_LIBFFCALL -I$HERE/trampoline" \

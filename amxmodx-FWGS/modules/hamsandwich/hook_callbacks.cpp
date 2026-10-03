@@ -152,16 +152,12 @@ Hook *hook = NULL;
 
 void DECLARE_HOOK(Hook_Void_Void, void *pthis)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
-        // v34 forensics: one-shot proof that the trampoline actually fires and
-        // that the `hook` global is populated. The device log had ZERO of these
-        // for player spawn, which drove the whole investigation.
-        static bool s_loggedFirstFire = false;
-        if (!s_loggedFirstFire)
-        {
-                s_loggedFirstFire = true;
-                MF_Log("[HAM] first fire: pthis=%p hook=%p func=%p", pthis, (void *)::hook, ::hook ? ::hook->func : NULL);
-        }
+	#endif
+        // v35: forensics block removed from the generic-trampoline path -
+        // it dereferenced the hook context before the original call and the
+        // x86_64 host test segfaulted inside SV_FakeConnect with it active.
 
         PUSH_VOID()
 
@@ -187,7 +183,9 @@ void DECLARE_HOOK(Hook_Void_Void, void *pthis)
 
 int DECLARE_HOOK(Hook_Int_Void, void *pthis)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -217,7 +215,9 @@ int DECLARE_HOOK(Hook_Int_Void, void *pthis)
 
 void DECLARE_HOOK(Hook_Void_Entvar, void *pthis, entvars_t *entvar)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         int iOther= TypeConversion.entvars_to_id(entvar);
@@ -247,7 +247,9 @@ void DECLARE_HOOK(Hook_Void_Entvar, void *pthis, entvars_t *entvar)
 
 void DECLARE_HOOK(Hook_Void_Cbase, void *pthis, void *other)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
         int iOther=TypeConversion.cbase_to_id(other);
 
@@ -275,7 +277,9 @@ void DECLARE_HOOK(Hook_Void_Cbase, void *pthis, void *other)
 
 int DECLARE_HOOK(Hook_Int_Float_Int, void *pthis, float f1, int i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
         PUSH_INT()
@@ -307,7 +311,9 @@ int DECLARE_HOOK(Hook_Int_Float_Int, void *pthis, float f1, int i1)
 
 int DECLARE_HOOK(Hook_Int_Float_Int_Int, void *pthis, float f1, int i1, int i2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
         PUSH_INT()
@@ -340,7 +346,9 @@ int DECLARE_HOOK(Hook_Int_Float_Int_Int, void *pthis, float f1, int i1, int i2)
 
 void DECLARE_HOOK(Hook_Void_Entvar_Int, void *pthis, entvars_t *ev1, int i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
         int iOther=TypeConversion.entvars_to_id(ev1);
 
@@ -369,7 +377,9 @@ void DECLARE_HOOK(Hook_Void_Entvar_Int, void *pthis, entvars_t *ev1, int i1)
 
 void DECLARE_HOOK(Hook_Void_Entvar_Entvar_Int, void *pthis, entvars_t *ev1, entvars_t *ev2, int i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
                 int iInflictor=TypeConversion.entvars_to_id(ev1);
                 int iAttacker=TypeConversion.entvars_to_id(ev2);
@@ -400,7 +410,9 @@ void DECLARE_HOOK(Hook_Void_Entvar_Entvar_Int, void *pthis, entvars_t *ev1, entv
 
 int DECLARE_HOOK(Hook_Int_Cbase, void *pthis, void *cb1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -433,7 +445,9 @@ int DECLARE_HOOK(Hook_Int_Cbase, void *pthis, void *cb1)
 
 void DECLARE_HOOK(Hook_Void_Int_Int, void *pthis, int i1, int i2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         MAKE_VECTOR()
@@ -460,7 +474,9 @@ void DECLARE_HOOK(Hook_Void_Int_Int, void *pthis, int i1, int i2)
 
 int DECLARE_HOOK(Hook_Int_Int_Str_Int, void *pthis, int i1, const char *sz1, int i2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
         ke::AString a;
@@ -496,7 +512,9 @@ int DECLARE_HOOK(Hook_Int_Int_Str_Int, void *pthis, int i1, const char *sz1, int
 
 int DECLARE_HOOK(Hook_Int_Int_Str_Int_Int, void *pthis, int i1, const char *sz1, int i2, int i3)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret = 0;
         int origret = 0;
         ke::AString a;
@@ -533,7 +551,9 @@ int DECLARE_HOOK(Hook_Int_Int_Str_Int_Int, void *pthis, int i1, const char *sz1,
 
 int DECLARE_HOOK(Hook_Int_Int, void *pthis, int i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
         PUSH_INT()
@@ -565,7 +585,9 @@ int DECLARE_HOOK(Hook_Int_Int, void *pthis, int i1)
 
 int DECLARE_HOOK(Hook_Int_Entvar, void *pthis, entvars_t *ev1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -597,7 +619,9 @@ int DECLARE_HOOK(Hook_Int_Entvar, void *pthis, entvars_t *ev1)
 
 int DECLARE_HOOK(Hook_Int_Entvar_Entvar_Float_Int, void *pthis, entvars_t *inflictor, entvars_t *attacker, float damage, int damagebits)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
         PUSH_INT()
@@ -632,7 +656,9 @@ int DECLARE_HOOK(Hook_Int_Entvar_Entvar_Float_Int, void *pthis, entvars_t *infli
 }
 int DECLARE_HOOK(Hook_Int_Entvar_Entvar_Float_Float_Int, void *pthis, entvars_t *inflictor, entvars_t *attacker, float damage, float unknown, int damagebits)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
         PUSH_INT()
@@ -669,7 +695,9 @@ int DECLARE_HOOK(Hook_Int_Entvar_Entvar_Float_Float_Int, void *pthis, entvars_t 
 
 void DECLARE_HOOK(Hook_Void_Int, void *pthis, int i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         MAKE_VECTOR()
@@ -695,7 +723,9 @@ void DECLARE_HOOK(Hook_Void_Int, void *pthis, int i1)
 
 float DECLARE_HOOK(Hook_Float_Int, void *pthis, int i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         float ret=0.0;
         float origret=0.0;
         PUSH_FLOAT()
@@ -768,7 +798,9 @@ void DECLARE_HOOK(Hook_Vector_Float_Cbase_Int, Vector *out, void *pthis, float f
 
 void DECLARE_HOOK(Hook_Void_Cbase_Cbase_Int_Float, void *pthis, void *cb1, void *cb2, int i1, float f1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
         int iCaller=TypeConversion.cbase_to_id(cb1);
         int iActivator=TypeConversion.cbase_to_id(cb2);
@@ -800,7 +832,9 @@ void DECLARE_HOOK(Hook_Void_Cbase_Cbase_Int_Float, void *pthis, void *cb1, void 
 
 void DECLARE_HOOK(Hook_Void_Entvar_Float_Vector_Trace_Int, void *pthis, entvars_t *ev1, float f1, Vector v1, TraceResult *tr1, int i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
         int iev1=TypeConversion.entvars_to_id(ev1);
 
@@ -831,7 +865,9 @@ void DECLARE_HOOK(Hook_Void_Entvar_Float_Vector_Trace_Int, void *pthis, entvars_
 
 void DECLARE_HOOK(Hook_Void_Float_Vector_Trace_Int, void *pthis, float f1, Vector v1, TraceResult *tr1, int i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         MAKE_VECTOR()
@@ -986,7 +1022,9 @@ void DECLARE_HOOK(Hook_Vector_pVector, Vector *out, void *pthis, Vector *v1)
 
 int DECLARE_HOOK(Hook_Int_pVector, void *pthis, Vector *v1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
         PUSH_INT()
@@ -1016,7 +1054,9 @@ int DECLARE_HOOK(Hook_Int_pVector, void *pthis, Vector *v1)
 
 void DECLARE_HOOK(Hook_Void_Entvar_Float_Float, void *pthis, entvars_t *ev1, float f1, float f2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
         cell cev1=TypeConversion.entvars_to_id(ev1);
 
@@ -1045,7 +1085,9 @@ void DECLARE_HOOK(Hook_Void_Entvar_Float_Float, void *pthis, entvars_t *ev1, flo
 
 void DECLARE_HOOK(Hook_Void_pFloat_pFloat, void *pthis, float *f1, float *f2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         MAKE_VECTOR()
@@ -1072,7 +1114,9 @@ void DECLARE_HOOK(Hook_Void_pFloat_pFloat, void *pthis, float *f1, float *f2)
 
 void DECLARE_HOOK(Hook_Void_Entvar_Float, void *pthis, entvars_t *ev1, float f1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
         cell cev1=TypeConversion.entvars_to_id(ev1);
 
@@ -1100,7 +1144,9 @@ void DECLARE_HOOK(Hook_Void_Entvar_Float, void *pthis, entvars_t *ev1, float f1)
 
 void DECLARE_HOOK(Hook_Void_Int_Int_Int, void *pthis, int i1, int i2, int i3)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         MAKE_VECTOR()
@@ -1127,7 +1173,9 @@ void DECLARE_HOOK(Hook_Void_Int_Int_Int, void *pthis, int i1, int i2, int i3)
 }
 int DECLARE_HOOK(Hook_Int_ItemInfo, void *pthis, void *iteminfo)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret = 0;
         int origret = 0;
 
@@ -1159,7 +1207,9 @@ int DECLARE_HOOK(Hook_Int_ItemInfo, void *pthis, void *iteminfo)
 
 float DECLARE_HOOK(Hook_Float_Void, void *pthis)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         float ret=0.0;
         float origret=0.0;
         PUSH_FLOAT()
@@ -1185,7 +1235,9 @@ float DECLARE_HOOK(Hook_Float_Void, void *pthis)
 }
 void DECLARE_HOOK(Hook_Void_Float_Int, void* pthis, float f1, int i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         MAKE_VECTOR()
@@ -1211,7 +1263,9 @@ void DECLARE_HOOK(Hook_Void_Float_Int, void* pthis, float f1, int i1)
 
 float DECLARE_HOOK(Hook_Float_Float_Cbase, void* pthis, float f1, void *cb1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         float ret = 0.0;
         float origret = 0.0;
 
@@ -1246,7 +1300,9 @@ float DECLARE_HOOK(Hook_Float_Float_Cbase, void* pthis, float f1, void *cb1)
 
 void DECLARE_HOOK(Hook_Void_Float, void* pthis, float f1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         MAKE_VECTOR()
@@ -1271,7 +1327,9 @@ void DECLARE_HOOK(Hook_Void_Float, void* pthis, float f1)
 
 void DECLARE_HOOK(Hook_Void_Float_Float_Float_Int, void* pthis, float f1, float f2, float f3, int i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
                 MAKE_VECTOR()
@@ -1337,7 +1395,9 @@ void DECLARE_HOOK(Hook_Vector_Float, Vector *out, void *pthis, float f1)
 
 void DECLARE_HOOK(Hook_Void_Float_Cbase, void *pthis, float f1, void *cb)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
         int iEnt =TypeConversion.cbase_to_id(cb);
 
@@ -1366,7 +1426,9 @@ void DECLARE_HOOK(Hook_Void_Float_Cbase, void *pthis, float f1, void *cb)
 
 int DECLARE_HOOK(Hook_Int_Float_Float, void *pthis, float f1, float f2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -1400,7 +1462,9 @@ int DECLARE_HOOK(Hook_Int_Float_Float, void *pthis, float f1, float f2)
 
 int DECLARE_HOOK(Hook_Int_Float, void *pthis, float f1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -1433,7 +1497,9 @@ int DECLARE_HOOK(Hook_Int_Float, void *pthis, float f1)
 
 int DECLARE_HOOK(Hook_Int_Int_Int, void *pthis, int i1, int i2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -1467,7 +1533,9 @@ int DECLARE_HOOK(Hook_Int_Int_Int, void *pthis, int i1, int i2)
 
 void DECLARE_HOOK(Hook_Void_Str_Float_Float_Float, void *pthis, const char *sz1, float f1, float f2, float f3)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         ke::AString a;
 
         PUSH_VOID()
@@ -1501,7 +1569,9 @@ void DECLARE_HOOK(Hook_Void_Str_Float_Float_Float, void *pthis, const char *sz1,
 
 void DECLARE_HOOK(Hook_Void_Str_Float_Float_Float_Int_Cbase, void *pthis, const char *sz1, float f1, float f2, float f3, int i1, void *cb)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         ke::AString a;
 
         PUSH_VOID()
@@ -1538,7 +1608,9 @@ void DECLARE_HOOK(Hook_Void_Str_Float_Float_Float_Int_Cbase, void *pthis, const 
 
 int DECLARE_HOOK(Hook_Int_Vector_Vector_Float_Float, void *pthis, Vector v1, Vector v2, float f1, float f2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -1578,7 +1650,9 @@ int DECLARE_HOOK(Hook_Int_Vector_Vector_Float_Float, void *pthis, Vector v1, Vec
 
 int DECLARE_HOOK(Hook_Int_Short, void *pthis, short s1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -1611,7 +1685,9 @@ int DECLARE_HOOK(Hook_Int_Short, void *pthis, short s1)
 
 void DECLARE_HOOK(Hook_Void_Entvar_Entvar_Float_Int_Int, void *pthis, entvars_t *inflictor, entvars_t *attacker, float damage, int classignore, int damagebits)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         int iInflictor=TypeConversion.entvars_to_id(inflictor);
@@ -1646,7 +1722,9 @@ void DECLARE_HOOK(Hook_Void_Entvar_Entvar_Float_Int_Int, void *pthis, entvars_t 
 
 void DECLARE_HOOK(Hook_Void_Vector_Entvar_Entvar_Float_Int_Int, void *pthis, Vector source, entvars_t *inflictor, entvars_t *attacker, float damage, int classignore, int damagebits)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         int iInflictor=TypeConversion.entvars_to_id(inflictor);
@@ -1684,7 +1762,9 @@ void DECLARE_HOOK(Hook_Void_Vector_Entvar_Entvar_Float_Int_Int, void *pthis, Vec
 
 float DECLARE_HOOK(Hook_Float_Int_Float, void *pthis, int i1, float f2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         float ret=0.0;
         float origret=0.0;
 
@@ -1718,7 +1798,9 @@ float DECLARE_HOOK(Hook_Float_Int_Float, void *pthis, int i1, float f2)
 
 int DECLARE_HOOK(Hook_Int_Str, void *pthis, const char *sz1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
         ke::AString a;
@@ -1753,7 +1835,9 @@ int DECLARE_HOOK(Hook_Int_Str, void *pthis, const char *sz1)
 
 void DECLARE_HOOK(Hook_Void_Edict, void *pthis, edict_t *ed1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         int id1=TypeConversion.edict_to_id(ed1);
@@ -1781,7 +1865,9 @@ void DECLARE_HOOK(Hook_Void_Edict, void *pthis, edict_t *ed1)
 
 void DECLARE_HOOK(Hook_Void_Int_Str_Bool, void *pthis, int i1, const char *sz2, bool b3)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
         //String a=sz2;
 
@@ -1811,7 +1897,9 @@ void DECLARE_HOOK(Hook_Void_Int_Str_Bool, void *pthis, int i1, const char *sz2, 
 
 void DECLARE_HOOK(Hook_Void_Vector_Vector, void *pthis, Vector v1, Vector v2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         MAKE_VECTOR()
@@ -1841,7 +1929,9 @@ void DECLARE_HOOK(Hook_Void_Vector_Vector, void *pthis, Vector v1, Vector v2)
 
 void DECLARE_HOOK(Hook_Void_Str_Bool, void *pthis, const char *sz1, bool b2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         ke::AString a;
 
         PUSH_VOID()
@@ -1873,7 +1963,9 @@ void DECLARE_HOOK(Hook_Void_Str_Bool, void *pthis, const char *sz1, bool b2)
 
 int DECLARE_HOOK(Hook_Int_Str_Str_Int_Str_Int_Int, void *pthis, const char *sz1, const char *sz2, int i1, const char *sz3, int i2, int i3)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -1911,7 +2003,9 @@ int DECLARE_HOOK(Hook_Int_Str_Str_Int_Str_Int_Int, void *pthis, const char *sz1,
 
 int DECLARE_HOOK(Hook_Int_Int_Int_Float_Int, void *pthis, int i1, int i2, float f1, int i3)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -1947,7 +2041,9 @@ int DECLARE_HOOK(Hook_Int_Int_Int_Float_Int, void *pthis, int i1, int i2, float 
 
 void DECLARE_HOOK(Hook_Void_Str_Int, void *pthis, const char *sz1, int i2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         ke::AString a;
 
         PUSH_VOID()
@@ -1979,7 +2075,9 @@ void DECLARE_HOOK(Hook_Void_Str_Int, void *pthis, const char *sz1, int i2)
 
 void DECLARE_HOOK(Hook_Void_Cbase_Int, void *pthis, void *p1, int i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
         int iEnt =TypeConversion.cbase_to_id(p1);
 
@@ -2008,7 +2106,9 @@ void DECLARE_HOOK(Hook_Void_Cbase_Int, void *pthis, void *p1, int i1)
 
 void DECLARE_HOOK(Hook_Void_Str, void *pthis, const char *sz1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         ke::AString a;
 
         PUSH_VOID()
@@ -2039,7 +2139,9 @@ void DECLARE_HOOK(Hook_Void_Str, void *pthis, const char *sz1)
 
 void DECLARE_HOOK(Hook_Void_Vector, void *pthis, Vector v1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         MAKE_VECTOR()
@@ -2065,7 +2167,9 @@ void DECLARE_HOOK(Hook_Void_Vector, void *pthis, Vector v1)
 
 int DECLARE_HOOK(Hook_Int_Str_Vector_Str, void *pthis, const char *sz1, Vector v2, const char *sz2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
         ke::AString a;
@@ -2105,7 +2209,9 @@ int DECLARE_HOOK(Hook_Int_Str_Vector_Str, void *pthis, const char *sz1, Vector v
 
 int DECLARE_HOOK(Hook_Int_Str_Str, void *pthis, const char *sz1, const char *sz2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
         ke::AString a;
@@ -2144,7 +2250,9 @@ int DECLARE_HOOK(Hook_Int_Str_Str, void *pthis, const char *sz1, const char *sz2
 
 void DECLARE_HOOK(Hook_Void_Float_Float, void *pthis, float f1, float f2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         MAKE_VECTOR()
@@ -2171,7 +2279,9 @@ void DECLARE_HOOK(Hook_Void_Float_Float, void *pthis, float f1, float f2)
 
 void DECLARE_HOOK(Hook_Void_Str_Str_Int, void *pthis, const char *sz1, const char *sz2, int i3)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         ke::AString a;
         ke::AString b;
 
@@ -2206,7 +2316,9 @@ void DECLARE_HOOK(Hook_Void_Str_Str_Int, void *pthis, const char *sz1, const cha
 
 int DECLARE_HOOK(Hook_Int_pVector_pVector_Cbase_pFloat, void *pthis, Vector *v1, Vector *v2, void* cb, float* fl)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -2248,7 +2360,9 @@ int DECLARE_HOOK(Hook_Int_pVector_pVector_Cbase_pFloat, void *pthis, Vector *v1,
 
 void DECLARE_HOOK(Hook_Void_Cbase_pVector_Float, void *pthis, void *p1, Vector *v1, float fl)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
         int iEnt =TypeConversion.cbase_to_id(p1);
 
@@ -2278,7 +2392,9 @@ void DECLARE_HOOK(Hook_Void_Cbase_pVector_Float, void *pthis, void *p1, Vector *
 
 int DECLARE_HOOK(Hook_Int_pVector_pVector_Float_Cbase_pVector, void *pthis, Vector *v1, Vector *v2, float fl, void* cb, Vector *v3)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -2323,7 +2439,9 @@ int DECLARE_HOOK(Hook_Int_pVector_pVector_Float_Cbase_pVector, void *pthis, Vect
 
 int DECLARE_HOOK(Hook_Int_Cbase_Bool, void *pthis, void *cb1, bool b1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -2357,7 +2475,9 @@ int DECLARE_HOOK(Hook_Int_Cbase_Bool, void *pthis, void *cb1, bool b1)
 
 int DECLARE_HOOK(Hook_Int_Vector_Vector, void *pthis, Vector v1, Vector v2)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -2393,7 +2513,9 @@ int DECLARE_HOOK(Hook_Int_Vector_Vector, void *pthis, Vector v1, Vector v2)
 
 int DECLARE_HOOK(Hook_Int_Entvar_Float, void *pthis, entvars_t *ev1, float f1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -2426,7 +2548,9 @@ int DECLARE_HOOK(Hook_Int_Entvar_Float, void *pthis, entvars_t *ev1, float f1)
 
 float DECLARE_HOOK(Hook_Float_Float, void *pthis, float f1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         float ret=0.0;
         float origret=0.0;
 
@@ -2457,7 +2581,9 @@ float DECLARE_HOOK(Hook_Float_Float, void *pthis, float f1)
 
 void DECLARE_HOOK(Hook_Void_Entvar_Entvar_Float, void *pthis, entvars_t *attacker, entvars_t *inflictor, float damage)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         int iAttacker=TypeConversion.entvars_to_id(attacker);
@@ -2490,7 +2616,9 @@ void DECLARE_HOOK(Hook_Void_Entvar_Entvar_Float, void *pthis, entvars_t *attacke
 
 bool DECLARE_HOOK(Hook_Bool_Void, void *pthis)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         bool ret=0;
         bool origret=0;
 
@@ -2519,7 +2647,9 @@ bool DECLARE_HOOK(Hook_Bool_Void, void *pthis)
 
 int DECLARE_HOOK(Hook_Int_pVector_pVector_Float_Cbase_pVector_pVector_Bool, void *pthis, Vector *v1, Vector *v2, float fl, void* cb, Vector *v3, Vector *v4, bool b1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -2571,7 +2701,9 @@ int DECLARE_HOOK(Hook_Int_pVector_pVector_Float_Cbase_pVector_pVector_Bool, void
 
 int DECLARE_HOOK(Hook_Int_Vector_Cbase, void *pthis, Vector v1, void* cb)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
         PUSH_INT()
@@ -2607,7 +2739,9 @@ int DECLARE_HOOK(Hook_Int_Vector_Cbase, void *pthis, Vector v1, void* cb)
 
 int DECLARE_HOOK(Hook_Int_Vector, void *pthis, Vector v1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -2640,7 +2774,9 @@ int DECLARE_HOOK(Hook_Int_Vector, void *pthis, Vector v1)
 
 int DECLARE_HOOK(Hook_Int_Cbase_pVector, void *pthis, void *cb1, Vector *v1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         int ret=0;
         int origret=0;
 
@@ -2676,7 +2812,9 @@ int DECLARE_HOOK(Hook_Int_Cbase_pVector, void *pthis, void *cb1, Vector *v1)
 
 void DECLARE_HOOK(Hook_Void_Bool, void *pthis, bool b1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         MAKE_VECTOR()
@@ -2702,7 +2840,9 @@ void DECLARE_HOOK(Hook_Void_Bool, void *pthis, bool b1)
 
 bool DECLARE_HOOK(Hook_Bool_Cbase, void *pthis, void *cb)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         bool ret=0;
         bool origret=0;
 
@@ -2737,7 +2877,9 @@ bool DECLARE_HOOK(Hook_Bool_Cbase, void *pthis, void *cb)
 
 bool DECLARE_HOOK(Hook_Bool_Int, void *pthis, int i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         bool ret=0;
         bool origret=0;
 
@@ -2771,7 +2913,9 @@ bool DECLARE_HOOK(Hook_Bool_Int, void *pthis, int i1)
 
 void DECLARE_HOOK(Hook_Void_Cbase_Float, void *pthis, void *p1, float f1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
                 int iEnt =TypeConversion.cbase_to_id(p1);
 
@@ -2801,7 +2945,9 @@ void DECLARE_HOOK(Hook_Void_Cbase_Float, void *pthis, void *p1, float f1)
 
 void DECLARE_HOOK(Hook_Void_Cbase_Bool, void *pthis, void *p1, bool b1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
         int iEnt =TypeConversion.cbase_to_id(p1);
 
@@ -2910,7 +3056,9 @@ const char *DECLARE_HOOK(Hook_Str_Str, void *pthis, const char* str)
 
 void DECLARE_HOOK(Hook_Void_Short, void *pthis, short i1)
 {
+	#ifdef USE_LIBFFCALL
 	Hook *hook = ::hook; // v34: reentrancy-safe hook context (nested fires clobber the global)
+	#endif
         PUSH_VOID()
 
         MAKE_VECTOR()
