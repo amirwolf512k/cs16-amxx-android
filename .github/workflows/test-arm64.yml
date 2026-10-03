@@ -23,7 +23,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,6 +54,17 @@ jobs:
         run: |
           bash glue/build_host_chain.sh
 
+      # v35: build the REAL cstrike gamedll (same ReGameDLL source as the
+      # Android libcs_android.so) + YaPB so the full cstrike chain test can
+      # run natively on arm64 -- battery plugin + cvar diagnostics included
+      - name: Build cstrike gamedll + YaPB (BUILD_SERVER=ON)
+        shell: bash
+        run: |
+          cmake -S cs16-client-main -B out/cs-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_CLIENT=OFF -DBUILD_MAINUI=OFF -DBUILD_SERVER=ON
+          cmake --build out/cs-build -j$(nproc)
+
       # v27 regression test: executes the REAL register_native trampoline
       # bytes (amxx_dyna_codegen.h) natively — catches bad instruction
       # encodings like the aarch64 `ldr x17, [pc, #4]` bug that crashed
@@ -68,6 +79,18 @@ jobs:
       - name: Run full AMXX chain test and evaluate
         shell: bash
         run: bash scripts/run_host_test.sh
+
+      # v35: the FULL cstrike chain on arm64 -- engine -> metamod -> AMXX ->
+      # real ReGameDLL gamedll, every staged plugin (cvar_compat first!) +
+      # battery_test + cvar_suite. Hard gates: no crashes, cvar surface OK
+      # (bot_quota/amx_show_activity compat pointers non-zero), no unexpected
+      # runtime errors. ham-probe gates are informational here (hamdata.ini
+      # never matches the locally built ReGameDLL; device gamedll verified).
+      - name: Run full cstrike gamedll test (battery + cvar suite)
+        shell: bash
+        env:
+          CS_HOST_TEST_MODE: ci
+        run: bash scripts/run_cstrike_host_test.sh
 
       # v17: client-connect regression test (the v16 device crash happened at
       # "Trying to connect with modern protocol" — dedicated CI runs never
@@ -104,6 +127,8 @@ jobs:
             out/host-test/engine.log
             out/client-test/console.txt
             out/client-test/engine.log
+            out/cs-host-test/console.txt
+            out/cs-host-test/engine.log
           if-no-files-found: warn
 
       - name: Telegram report
@@ -122,6 +147,12 @@ jobs:
             RES="$(printf '%s\n%s' "$RES" "✅ تست اتصال کلاینت arm64 ($ARCH) موفق — کلاینت وصل شد، get_user_authid (مسیر کرش v16) سالم")"
           else
             RES="$(printf '%s\n%s' "$RES" "❌ تست اتصال کلاینت arm64 ($ARCH) شکست — لاگ‌ها در آرتیفکت‌های اکشن")"
+          fi
+          # v35: full cstrike chain (real ReGameDLL + battery + cvar suite)
+          if [ -f out/cs-host-test/console.txt ] && grep -q "CVAR] 3 compat ptrs: bot_quota=[1-9]" out/cs-host-test/console.txt && ! grep -qE "Crash: signal|SIGSEGV|Segmentation" out/cs-host-test/console.txt; then
+            RES="$(printf '%s\n%s' "$RES" "✅ تست کامل cstrike روی arm64 موفق — gamedll واقعی + cvar_compat (bot_quota/amx_show_activity) + کل API cvar سالم")"
+          else
+            RES="$(printf '%s\n%s' "$RES" "❌ تست کامل cstrike arm64 شکست — out/cs-host-test/console.txt را ببین")"
           fi
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TG_CHAT_ID }}" -d text="$RES" > /dev/null || true
