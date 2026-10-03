@@ -34,6 +34,7 @@
 #include "CoreConfig.h"
 #include <resdk/mod_rehlds_api.h>
 #include <amtl/am-utility.h>
+#include <malloc.h>
 
 plugin_info_t Plugin_info =
 {
@@ -1593,6 +1594,17 @@ void C_CvarValue2(const edict_t *pEdict, int requestId, const char *cvar, const 
 
 C_DLLEXPORT     int     Meta_Query(const char   *ifvers, plugin_info_t **pPlugInfo,     mutil_funcs_t *pMetaUtilFuncs)
 {
+        // cs16-amxx-android v34: keep every plugin AMX heap in the same
+        // malloc arena. The dynamic-native string path (param_convert) can
+        // only express caller->provider heap deltas inside a 32-bit pawn
+        // cell; when glibc serves one AMX from brk and another from mmap
+        // the heaps land terabytes apart and the rebased offset wraps into
+        // unmapped memory (SIGSEGV on the first string arg -- seen as the
+        // "zp_register_zombie_class" crash on the x86_64 host chain).
+        // Raising the mmap threshold keeps the (few-MB) plugin heaps in
+        // brk, tens of MB apart at worst.
+        mallopt(M_MMAP_THRESHOLD, 256 * 1024 * 1024);
+
         gpMetaUtilFuncs = pMetaUtilFuncs;
         *pPlugInfo = &Plugin_info;
 

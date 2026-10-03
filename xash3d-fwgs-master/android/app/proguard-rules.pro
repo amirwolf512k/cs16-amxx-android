@@ -27,7 +27,13 @@
     java.lang.String getCallingPackage();
     java.lang.String[] getAssetsList(boolean, java.lang.String);
     android.content.res.AssetManager getAssets(boolean);
-    boolean showMOTD(byte[]);
+    # v34 FIX: the real v30+ signature is (title, html) as two byte arrays.
+    # The stale v20 rule `boolean showMOTD(byte[]);` no longer matched any
+    # method, so R8 stripped showMOTD from RELEASE builds (it has no Java
+    # callers -- it is invoked from native code via GetMethodID). That made
+    # Android_ShowMOTD log "showMOTD=0x0" and fall back to plain HUD text
+    # (no dialog window, no OK button) exactly on release APKs.
+    boolean showMOTD(byte[], byte[]);
     void nativeMOTDClosed();
 }
 

@@ -461,6 +461,9 @@ static cell AMX_NATIVE_CALL param_convert(AMX *amx, cell *params)
         unsigned char *data =amx->base+(int)((AMX_HEADER *)amx->base)->dat;
         unsigned char *realdata = caller->base+(int)((AMX_HEADER *)caller->base)->dat;
 
+        cell *slot = (cell *)(data+(int)amx->frm+(p+2)*sizeof(cell));
+        cell value = *slot;
+
         // cs16-amxx-android v33: compute the delta BEFORE truncating to a
         // 32-bit cell. Truncating each 64-bit pointer separately gives a
         // wrong delta whenever the two AMX heaps are more than 4 GiB apart
@@ -469,7 +472,44 @@ static cell AMX_NATIVE_CALL param_convert(AMX *amx, cell *params)
         // get_string/strlen crashes the server. The pawn cell space is
         // 32-bit, so the (wrapping) difference of the full pointers is
         // what the frame cell actually needs.
-        *(cell *)(data+(int)amx->frm+(p+2)*sizeof(cell)) -= (cell)((intptr_t)data - (intptr_t)realdata);
+        cell delta = (cell)((intptr_t)data - (intptr_t)realdata);
+
+        // cs16-amxx-android v34: the 32-bit cell fundamentally cannot span
+        // caller/provider heap distances beyond +-2GiB. When the raw delta
+        // overflows (heaps served from different arenas), rebasing the
+        // offset produces an address that wraps into a random location.
+        // Fall back to COPYING the string from the caller heap into a
+        // temporary allocation in OUR heap and repointing the frame slot,
+        // so the handler reads real data. (Caller heaps live tens of MB
+        // apart thanks to the Meta_Query mallopt() tune-up, so this path
+        // is a safety net, not the primary mechanism.)
+        if ((intptr_t)data - (intptr_t)realdata > 0x40000000ll
+        ||  (intptr_t)realdata - (intptr_t)data > 0x40000000ll)
+        {
+                int slen = 0;
+                char *str = get_amxstring(g_pCaller, value, 0, slen);
+
+                if (str != NULL)
+                {
+                        cell amx_addr;
+                        cell *phys_addr = NULL;
+                        size_t cells = (slen / sizeof(cell)) + 2;
+
+                        if (amx_Allot(amx, (int)cells, &amx_addr, &phys_addr) == AMX_ERR_NONE)
+                        {
+                                set_amxstring(amx, amx_addr, str, slen);
+                                *slot = amx_addr;
+
+                                AMXXLOG_Log("[AMXX] param_convert: caller/provider heap delta overflowed a 32-bit cell; string copied (param %d, %d bytes)", (int)p, slen);
+                                return 1;
+                        }
+                }
+
+                LogError(amx, AMX_ERR_NATIVE, "param_convert: caller/provider heaps are more than 1 GiB apart and the string could not be copied");
+                return 0;
+        }
+
+        *slot -= delta;
 
         return 1;
 }

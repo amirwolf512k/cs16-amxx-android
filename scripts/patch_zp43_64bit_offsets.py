@@ -86,14 +86,17 @@ const OFFSET_MODELINDEX_64 = 2180
 const OFFSET_ACTIVE_ITEM_64 = 1696
 const OFFSET_WEAPONOWNER_64 = 232
 
-// Calibrate the pdata layout against the cstrike module's gamedata-driven
-// team native. Safe to call for every spawn/team change; it acts once.
-stock pdata_calibrate(id)
+// Calibrate the pdata layout against the team the GAME just announced for
+// this player (TeamInfo arg 2). v34: no cs_get_user_team here -- TeamInfo
+// fires before PutInServer during joins and the native raises "Invalid
+// player" (runtime error 10) which aborted the whole hook. The announced
+// team string IS the authoritative team, so use it directly as the oracle.
+// Safe to call for every team change; it acts once.
+stock pdata_calibrate(id, want)
 {
         if (g_pdata_mode) return;
 
         // only a T/CT player gives an unambiguous answer
-        new want = _:cs_get_user_team(id);
         if (want != 1 && want != 2) return;
 
         // classic layout: win offset + 5 (linux diff already applied)
@@ -147,7 +150,12 @@ INJ = (
     "public fw_PlayerSpawn_Post(" + ID + ")\n{\n"
     "\tserver_print(\"[ZPDBG] spawn_post id=%d alive=%d mode=%d\", " + ID + ", is_user_alive(" + ID + "), g_pdata_mode)\n"
     "\t// cs16-amxx-android v33: calibrate pdata offsets on the first spawn\n"
-    "\tpdata_calibrate(" + ID + ")\n"
+    "\t// (v34: team passed explicitly, and only for ALIVE players -- the\n"
+    "\t// putinserver spawn runs before AMXX marks the client ingame and\n"
+    "\t// before a team is picked, where cs_get_user_team would raise\n"
+    "\t// \"Invalid player\"; join-time calibration is covered by the\n"
+    "\t// TeamInfo hook using the announced team string)\n"
+    "\tif (is_user_alive(" + ID + ")) pdata_calibrate(" + ID + ", _:cs_get_user_team(" + ID + "))\n"
     "\tserver_print(\"[ZPDBG] spawn_post mode=%d\", g_pdata_mode)\n"
     "\t// v33: team not assigned yet -> pdata layout still unknown; skip the\n"
     "\t// pdata-heavy spawn body (the round restart respawns everyone properly)\n"
@@ -162,8 +170,14 @@ if m2:
     INJ2 = (
         "public message_teaminfo(" + m2.group(1) + ")\n{\n"
         "\tserver_print(\"[ZPDBG] teaminfo\")\n"
-        "\t// cs16-amxx-android v33: calibrate pdata offsets on the first team join\n"
-        "\tpdata_calibrate(get_msg_arg_int(1))\n"
+        "\t// cs16-amxx-android v34: calibrate with the team announced by the\n"
+        "\t// message itself (arg 2 = \"TERRORIST\"/\"CT\"/...), never with natives\n"
+        "\t// that can raise \"Invalid player\" during the join race.\n"
+        "\tnew szTeam[12], want\n"
+        "\tget_msg_arg_string(2, szTeam, 11)\n"
+        "\tif (equal(szTeam, \"TERRORIST\")) want = 1\n"
+        "\telse if (equal(szTeam, \"CT\")) want = 2\n"
+        "\tpdata_calibrate(get_msg_arg_int(1), want)\n"
         "\tserver_print(\"[ZPDBG] teaminfo mode=%d\", g_pdata_mode)"
     )
     text = re.sub(r"public message_teaminfo\(([^)]*)\)\r?\n\{", INJ2.replace("\\", "\\\\"), text, count=1)

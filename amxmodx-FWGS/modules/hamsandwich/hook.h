@@ -98,6 +98,19 @@ public:
                         if (tramp)
                                 ivtable[entry]=(intptr_t *)tramp;
 
+#if defined(__linux__) || defined(__APPLE__)
+                        // v34 forensics: verify the swap actually landed. If
+                        // mprotect or the store failed (RELRO/SELinux edge
+                        // cases) the slot keeps its original value and every
+                        // hook silently stays dead -- log it either way.
+                        if ((void *)ivtable[entry] == tramp && tramp)
+                                MF_Log("[HAM] hooked %s::%s vtable=%p entry=%d orig=%p tramp=%p (patch verified)",
+                                        name, methodname, (void *)vtable, entry, func, tramp);
+                        else
+                                MF_Log("[HAM] PATCH FAILED for %s::%s vtable=%p entry=%d orig=%p tramp=%p slot-now=%p",
+                                        name, methodname, (void *)vtable, entry, func, tramp, (void *)ivtable[entry]);
+#endif
+
                         size_t len=strlen(name);
                         ent=new char[len+1];
 

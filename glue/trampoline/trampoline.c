@@ -51,48 +51,58 @@
  * is the page base so free_trampoline() can munmap it directly. */
 static void *tramp_alloc_exec(const unsigned char *code, size_t len)
 {
-	long psz = sysconf(_SC_PAGESIZE);
+        long psz = sysconf(_SC_PAGESIZE);
 
-	if (psz <= 0)
-		psz = 4096;
+        if (psz <= 0)
+                psz = 4096;
 
-	/* Path 1: anonymous RWX (legacy devices, emulators, targetSdk < 29) */
-	void *p = mmap(NULL, psz, PROT_READ | PROT_WRITE | PROT_EXEC,
-			MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        /* Path 1: anonymous RWX (legacy devices, emulators, targetSdk < 29) */
+        void *p = mmap(NULL, psz, PROT_READ | PROT_WRITE | PROT_EXEC,
+                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
-	if (p != MAP_FAILED)
-	{
-		memcpy(p, code, len);
-		__builtin___clear_cache((char *)p, (char *)p + len);
-		return p;
-	}
+        if (p != MAP_FAILED)
+        {
+                memcpy(p, code, len);
+                __builtin___clear_cache((char *)p, (char *)p + len);
+                return p;
+        }
 
-	/* Path 2: memfd-backed RX mapping (Android 10+ W^X enforcement) */
+        /* Path 2: memfd-backed mapping (Android 10+ W^X enforcement).
+         * v34: map RW first, memcpy + __clear_cache while the page is still
+         * WRITABLE, then mprotect to RX. The previous code cleared the cache
+         * AFTER mapping RX-only -- IC IVAU requires store permission on aarch64
+         * and faults (SIGSEGV) on read-only pages on several devices. */
 #ifdef __NR_memfd_create
-	{
-		int fd = (int)syscall(__NR_memfd_create, "hamtramp", 0u);
+        {
+                int fd = (int)syscall(__NR_memfd_create, "hamtramp", 0u);
 
-		if (fd >= 0)
-		{
-			if (ftruncate(fd, psz) == 0 && write(fd, code, len) == (ssize_t)len)
-			{
-				void *q = mmap(NULL, psz, PROT_READ | PROT_EXEC,
-						MAP_SHARED, fd, 0);
+                if (fd >= 0)
+                {
+                        void *q = MAP_FAILED;
 
-				if (q != MAP_FAILED)
-				{
-					__builtin___clear_cache((char *)q, (char *)q + len);
-					close(fd);
-					return q;
-				}
-			}
+                        if (ftruncate(fd, psz) == 0)
+                                q = mmap(NULL, psz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
-			close(fd);
-		}
-	}
+                        if (q != MAP_FAILED)
+                        {
+                                memcpy(q, code, len);
+                                __builtin___clear_cache((char *)q, (char *)q + len);
+
+                                if (mprotect(q, psz, PROT_READ | PROT_EXEC) == 0)
+                                {
+                                        close(fd);
+                                        return q;
+                                }
+
+                                munmap(q, psz);
+                        }
+
+                        close(fd);
+                }
+        }
 #endif
 
-	return NULL;
+        return NULL;
 }
 
 #if defined(__aarch64__)
@@ -115,37 +125,37 @@ static void *tramp_alloc_exec(const unsigned char *code, size_t len)
  */
 __TR_function alloc_trampoline (__TR_function address, void* variable, void* data)
 {
-	unsigned char buf[64];
-	uint32_t *w = (uint32_t *)buf;
-	uintptr_t d = (uintptr_t)data;
-	uintptr_t v = (uintptr_t)variable;
-	uintptr_t a = (uintptr_t)address;
-	int i;
+        unsigned char buf[64];
+        uint32_t *w = (uint32_t *)buf;
+        uintptr_t d = (uintptr_t)data;
+        uintptr_t v = (uintptr_t)variable;
+        uintptr_t a = (uintptr_t)address;
+        int i;
 
-	/* movz/movk Xn, #imm16, LSL #hw*16 */
+        /* movz/movk Xn, #imm16, LSL #hw*16 */
 #define A64_MOVZ(Rd, imm16, hw) (0xD2800000u | ((hw) << 21) | ((imm16) << 5) | (Rd))
 #define A64_MOVK(Rd, imm16, hw) (0xF2800000u | ((hw) << 21) | ((imm16) << 5) | (Rd))
 
-	for (i = 0; i < 4; i++)
-		w[i] = (i == 0) ? A64_MOVZ(16, (d >> (16 * i)) & 0xFFFF, i)
-			: A64_MOVK(16, (d >> (16 * i)) & 0xFFFF, i);
+        for (i = 0; i < 4; i++)
+                w[i] = (i == 0) ? A64_MOVZ(16, (d >> (16 * i)) & 0xFFFF, i)
+                        : A64_MOVK(16, (d >> (16 * i)) & 0xFFFF, i);
 
-	for (i = 0; i < 4; i++)
-		w[4 + i] = (i == 0) ? A64_MOVZ(17, (v >> (16 * i)) & 0xFFFF, i)
-			: A64_MOVK(17, (v >> (16 * i)) & 0xFFFF, i);
+        for (i = 0; i < 4; i++)
+                w[4 + i] = (i == 0) ? A64_MOVZ(17, (v >> (16 * i)) & 0xFFFF, i)
+                        : A64_MOVK(17, (v >> (16 * i)) & 0xFFFF, i);
 
-	w[8] = 0xF9000000u | (17u << 5) | 16u;          /* str x16, [x17] */
+        w[8] = 0xF9000000u | (17u << 5) | 16u;          /* str x16, [x17] */
 
-	for (i = 0; i < 4; i++)
-		w[9 + i] = (i == 0) ? A64_MOVZ(16, (a >> (16 * i)) & 0xFFFF, i)
-			: A64_MOVK(16, (a >> (16 * i)) & 0xFFFF, i);
+        for (i = 0; i < 4; i++)
+                w[9 + i] = (i == 0) ? A64_MOVZ(16, (a >> (16 * i)) & 0xFFFF, i)
+                        : A64_MOVK(16, (a >> (16 * i)) & 0xFFFF, i);
 
-	w[13] = 0xD61F0000u | (16u << 5);               /* br x16 */
+        w[13] = 0xD61F0000u | (16u << 5);               /* br x16 */
 
 #undef A64_MOVZ
 #undef A64_MOVK
 
-	return (__TR_function)tramp_alloc_exec(buf, 14 * 4);
+        return (__TR_function)tramp_alloc_exec(buf, 14 * 4);
 }
 #elif defined(__arm__)
 /* arm32 (A32 state) thunk (7 instructions + 3 literal words, 40 bytes):
@@ -167,60 +177,138 @@ __TR_function alloc_trampoline (__TR_function address, void* variable, void* dat
  */
 __TR_function alloc_trampoline (__TR_function address, void* variable, void* data)
 {
-	unsigned char buf[64];
-	uint32_t *w = (uint32_t *)buf;
+        unsigned char buf[64];
+        uint32_t *w = (uint32_t *)buf;
 
-	w[0] = 0xE92D0010u;                             /* push {r4}      */
-	w[1] = 0xE59F4000u | 0x10u;                     /* ldr r4,[pc,#16] */
-	w[2] = 0xE59FC000u | 0x10u;                     /* ldr r12,[pc,#16] */
-	w[3] = 0xE58C4000u;                             /* str r4,[r12]    */
-	w[4] = 0xE8BD0010u;                             /* pop {r4}        */
-	w[5] = 0xE59FC000u | 0x08u;                     /* ldr r12,[pc,#8] */
-	w[6] = 0xE12FFF1Cu;                             /* bx r12          */
-	w[7] = (uint32_t)(uintptr_t)data;               /* @0x1C */
-	w[8] = (uint32_t)(uintptr_t)variable;           /* @0x20 */
-	w[9] = (uint32_t)(uintptr_t)address;            /* @0x24 */
+        w[0] = 0xE92D0010u;                             /* push {r4}      */
+        w[1] = 0xE59F4000u | 0x10u;                     /* ldr r4,[pc,#16] */
+        w[2] = 0xE59FC000u | 0x10u;                     /* ldr r12,[pc,#16] */
+        w[3] = 0xE58C4000u;                             /* str r4,[r12]    */
+        w[4] = 0xE8BD0010u;                             /* pop {r4}        */
+        w[5] = 0xE59FC000u | 0x08u;                     /* ldr r12,[pc,#8] */
+        w[6] = 0xE12FFF1Cu;                             /* bx r12          */
+        w[7] = (uint32_t)(uintptr_t)data;               /* @0x1C */
+        w[8] = (uint32_t)(uintptr_t)variable;           /* @0x20 */
+        w[9] = (uint32_t)(uintptr_t)address;            /* @0x24 */
 
-	return (__TR_function)tramp_alloc_exec(buf, 10 * 4);
+        return (__TR_function)tramp_alloc_exec(buf, 10 * 4);
 }
 #endif
 
 void free_trampoline (__TR_function tramp)
 {
-	long psz = sysconf(_SC_PAGESIZE);
+        long psz = sysconf(_SC_PAGESIZE);
 
-	if (psz <= 0)
-		psz = 4096;
+        if (psz <= 0)
+                psz = 4096;
 
-	if (tramp)
-		munmap((void *)tramp, psz);
+        if (tramp)
+                munmap((void *)tramp, psz);
 }
 
 int is_trampoline (void* tramp)
 {
-	(void)tramp;
-	return 0;
+        (void)tramp;
+        return 0;
 }
 
 #else /* !aarch64 && !arm */
 
+#if defined(__x86_64__)
+/* v34: real x86_64 (SysV) backend -- 42-byte thunk.
+ * The previous fallback returned `address` itself as the "trampoline",
+ * which made hamsandwich write Hook_Void_Void straight into the vtable
+ * while the `hook` global was never populated (NULL deref / hang on the
+ * very first hook fire -- the "ZP + fake client connects -> hang" bug).
+ *
+ *   movabs r10, data        49 BA imm64
+ *   movabs r11, variable    49 BB imm64
+ *   mov    [r11], r10       4D 89 13
+ *   movabs r11, address     49 BB imm64
+ *   jmp    r11              41 FF E3
+ *
+ * r10/r11 are the two intra-procedure-call scratch registers of SysV
+ * AMD64 -- free to clobber, every real argument register passes through.
+ */
 __TR_function alloc_trampoline (__TR_function address, void* variable, void* data)
 {
-	(void)variable;
-	(void)data;
-	fprintf(stderr, "trampoline: no backend for this architecture\n");
-	return (__TR_function)address;
+        unsigned char buf[64];
+        unsigned char *w = buf;
+        uintptr_t d = (uintptr_t)data;
+        uintptr_t v = (uintptr_t)variable;
+        uintptr_t a = (uintptr_t)address;
+        long psz = sysconf(_SC_PAGESIZE);
+
+        if (psz <= 0)
+                psz = 4096;
+
+        *w++ = 0x49; *w++ = 0xBA;                 /* movabs r10, data   */
+        memcpy(w, &d, 8); w += 8;
+        *w++ = 0x49; *w++ = 0xBB;                 /* movabs r11, var    */
+        memcpy(w, &v, 8); w += 8;
+        *w++ = 0x4D; *w++ = 0x89; *w++ = 0x13;    /* mov [r11], r10     */
+        *w++ = 0x49; *w++ = 0xBB;                 /* movabs r11, addr   */
+        memcpy(w, &a, 8); w += 8;
+        *w++ = 0x41; *w++ = 0xFF; *w++ = 0xE3;    /* jmp r11            */
+
+        void *p = mmap(NULL, psz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+        if (p == MAP_FAILED)
+                return NULL;
+
+        memcpy(p, buf, (size_t)(w - buf));
+        __builtin___clear_cache((char *)p, (char *)p + (w - buf));
+
+        if (mprotect(p, psz, PROT_READ | PROT_EXEC) != 0)
+        {
+                munmap(p, psz);
+                return NULL;
+        }
+
+        return (__TR_function)p;
 }
 
 void free_trampoline (__TR_function tramp)
 {
-	(void)tramp;
+        long psz = sysconf(_SC_PAGESIZE);
+
+        if (psz <= 0)
+                psz = 4096;
+
+        if (tramp)
+                munmap((void *)tramp, psz);
 }
 
 int is_trampoline (void* tramp)
 {
-	(void)tramp;
-	return 0;
+        (void)tramp;
+        return 0;
 }
+
+#else /* neither ARM nor x86_64 */
+
+__TR_function alloc_trampoline (__TR_function address, void* variable, void* data)
+{
+        (void)variable;
+        (void)data;
+        /* v34: return NULL (NOT `address`!) so hamsandwich logs the failure
+         * and leaves the vtable alone instead of silently installing a
+         * callback that dereferences an unset `hook` pointer. */
+        fprintf(stderr, "trampoline: no backend for this architecture\n");
+        return NULL;
+}
+
+void free_trampoline (__TR_function tramp)
+{
+        (void)tramp;
+}
+
+int is_trampoline (void* tramp)
+{
+        (void)tramp;
+        return 0;
+}
+
+#endif /* __x86_64__ */
 
 #endif

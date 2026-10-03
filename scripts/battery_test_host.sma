@@ -21,6 +21,7 @@
 #include <csx>
 #include <geoip>
 #include <sqlx>
+#include <hamsandwich>
 
 #define MARK "[BAT] "
 new g_pass, g_fail, g_tries;
@@ -35,7 +36,19 @@ public plugin_init()
 
         register_clcmd("say /battery", "cmd_battery");
 
+        // v34: Ham hook probe -- proves the whole hamsandwich pipeline
+        // (hamdata vtable lookup -> vtable slot swap -> arch trampoline ->
+        // forward execution) works on this platform. The fake client spawn
+        // below MUST trip it; the runner checks the log for the print.
+        RegisterHam(Ham_Spawn, "player", "bat_ham_spawn_post", 1);
+
         set_task(4.0, "bat_kickoff");
+}
+
+public bat_ham_spawn_post(id)
+{
+        g_ham_spawn_count++;
+        server_print("[HAMPROBE] spawn_post id=%d alive=%d count=%d", id, is_user_alive(id), g_ham_spawn_count);
 }
 
 
@@ -236,9 +249,9 @@ run_battery(id)
 
         if (re)
         {
-		new mret;
-		new m = regex_match_c("amxx-32", re, mret);
-		check_fail(m > 0, "regex::match_c(amxx-32)");
+                new mret;
+                new m = regex_match_c("amxx-32", re, mret);
+                check_fail(m > 0, "regex::match_c(amxx-32)");
                 regex_free(re);
         }
 
@@ -290,6 +303,15 @@ get_user_model(id)
 finish()
 {
         server_print("[BAT] ===== BATTERY RESULT: %d PASS, %d FAIL =====", g_pass, g_fail);
+        // v34: the Ham probe must have fired at least once by now (the fake
+        // client spawns twice at least: ClientPutInServer + cs_user_spawn)
+        if (g_ham_spawn_count >= 1)
+                server_print("[BAT] HAM PROBE FIRED %d times -- hamsandwich pipeline OK", g_ham_spawn_count);
+        else
+        {
+                server_print("[BAT] HAM PROBE NEVER FIRED -- hamsandwich vtable/trampoline broken");
+                g_fail++;
+        }
         if (g_fail == 0)
                 server_print("[BAT] ALL MODULE TESTS PASSED");
         server_print("[BAT] ===== END =====");

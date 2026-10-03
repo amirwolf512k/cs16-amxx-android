@@ -83,7 +83,7 @@ new g_zclass_leech
 // Zombie Classes MUST be registered on plugin_precache
 public plugin_precache()
 {
-	register_plugin("[ZP] Default Zombie Classes", "4.3 Fix5", "MeRcyLeZZ")
+	register_plugin("[ZP] Default Zombie Classes", "4.3", "MeRcyLeZZ")
 	
 	// Register all classes
 	zp_register_zombie_class(zclass1_name, zclass1_info, zclass1_model, zclass1_clawmodel, zclass1_health, zclass1_speed, zclass1_gravity, zclass1_knockback)

@@ -61,24 +61,17 @@
 #define ZP_TEAM_ZOMBIE (1<<0)
 #define ZP_TEAM_HUMAN (1<<1)
 #define ZP_TEAM_NEMESIS (1<<2)
-#define ZP_TEAM_ASSASSIN (1<<3)
-#define ZP_TEAM_SURVIVOR (1<<4)
-#define ZP_TEAM_SNIPER (1<<5)
+#define ZP_TEAM_SURVIVOR (1<<3)
 
 /* Game modes for zp_round_started() */
 enum
 {
 	MODE_INFECTION = 1,
 	MODE_NEMESIS,
-	MODE_ASSASSIN,
 	MODE_SURVIVOR,
-	MODE_SNIPER,
 	MODE_SWARM,
 	MODE_MULTI,
-	MODE_PLAGUE,
-	MODE_ARMAGEDDON,
-	MODE_APOCALYPSE,
-	MODE_NIGHTMARE
+	MODE_PLAGUE
 }
 
 /* Winner teams for zp_round_ended() */
@@ -114,23 +107,7 @@ native zp_get_user_nemesis(id)
  * @param id		Player index.
  * @return		True if it is, false otherwise.
  */
- native zp_get_user_assassin(id)
-
-/**
- * Returns whether a player is a survivor.
- *
- * @param id		Player index.
- * @return		True if it is, false otherwise.
- */
 native zp_get_user_survivor(id)
-
-/**
- * Returns whether a player is the first zombie.
- *
- * @param id		Player index.
- * @return		True if it is, false otherwise.
- */
- native zp_get_user_sniper(id)
 
 /**
  * Returns whether a player is the first zombie.
@@ -281,26 +258,7 @@ native zp_make_user_nemesis(id)
  * @param id		Player index to turn into survivor.
  * @return		True on success, false otherwise.
  */
- native zp_make_user_assassin(id)
-
-/**
- * Forces a player to become a survivor.
- *
- * Note: Unavailable for last zombie/nemesis/assassin.
- *
- * @param id		Player index to turn into survivor.
- * @return		True on success, false otherwise.
- */
 native zp_make_user_survivor(id)
-
-/**
- * Respawns a player into a specific team.
- *
- * @param id		Player index to be respawned.
- * @param team		Team to respawn the player into (ZP_TEAM_ZOMBIE or ZP_TEAM_HUMAN).
- * @return		True on success, false otherwise.
- */
- native zp_make_user_sniper(id)
 
 /**
  * Respawns a player into a specific team.
@@ -320,19 +278,6 @@ native zp_respawn_user(id, team)
  * @return		True on success, false otherwise.
  */
 native zp_force_buy_extra_item(id, itemid, ignorecost = 0)
-
-/**
- * Overrides ZP player model with a different custom model.
- *
- * Note: This will last until player's next infection/humanization/respawn.
- *
- * Note: Don't call more often than absolutely needed.
- *
- * @param id		Player index.
- * @param newmodel	Model name.
- * @param modelindex	Modelindex (optional).
- */
-native zp_override_user_model(id, const newmodel[], modelindex = 0)
 
 /**
  * Returns whether the ZP round has started, i.e. first zombie
@@ -356,21 +301,7 @@ native zp_is_nemesis_round()
  *
  * @return		True if it is, false otherwise.
  */
- native zp_is_assassin_round()
-
-/**
- * Returns whether the current round is a survivor round.
- *
- * @return		True if it is, false otherwise.
- */
 native zp_is_survivor_round()
-
-/**
- * Returns whether the current round is a swarm round.
- *
- * @return		True if it is, false otherwise.
- */
- native zp_is_sniper_round()
 
 /**
  * Returns whether the current round is a swarm round.
@@ -385,27 +316,6 @@ native zp_is_swarm_round()
  * @return		True if it is, false otherwise.
  */
 native zp_is_plague_round()
-
-/**
- * Returns number of alive zombies.
- *
- * @return		Zombie count.
- */
- native zp_is_armageddon_round()
-
-/**
- * Returns whether the current round is a apocalypse round.
- *
- * @return		True if it is, false otherwise.
- */
-native zp_is_apocalypse_round()
-
-/**
- * Returns whether the current round is a nightmare round.
- *
- * @return		True if it is, false otherwise.
- */
-native zp_is_nightmare_round()
 
 /**
  * Returns number of alive zombies.
@@ -433,13 +343,6 @@ native zp_get_nemesis_count()
  *
  * @return		Survivor count.
  */
- native zp_get_assassin_count()
-
-/**
- * Returns number of alive survivors.
- *
- * @return		Survivor count.
- */
 native zp_get_survivor_count()
 
 /**
@@ -450,22 +353,6 @@ native zp_get_survivor_count()
  *
  * Note: ZP_TEAM_NEMESIS and ZP_TEAM_SURVIVOR can be used to make
  * an item available to Nemesis and Survivors respectively.
- *
- * @param name		Caption to display on the menu.
- * @param cost		Ammo packs to be deducted on purchase.
- * @param teams		Bitsum of teams it should be available for.
- * @return		An internal extra item ID, or -1 on failure.
- */
- native zp_get_sniper_count()
-
-/**
- * Registers a custom item which will be added to the extra items menu of ZP.
- *
- * Note: The returned extra item ID can be later used to catch item
- * purchase events for the zp_extra_item_selected() forward.
- *
- * Note: ZP_TEAM_NEMESIS, ZP_TEAM_ASSASSIN, ZP_TEAM_SURVIVOR and ZP_TEAM_SNIPER can be used to make
- * an item available to Nemesis, Assassin, Survivors and Snipers respectively.
  *
  * @param name		Caption to display on the menu.
  * @param cost		Ammo packs to be deducted on purchase.
@@ -507,16 +394,6 @@ native zp_get_extra_item_id(const name[])
  * @return		Internal zombie class ID, or -1 if not found.
  */
 native zp_get_zombie_class_id(const name[])
-
-/**
- * Returns a zombie class' description (passed by reference).
- *
- * @param classid		Internal zombie class ID.
- * @param info			The buffer to store the string in.
- * @param len			Character size of the output buffer.
- * @return			True on success, false otherwise.
- */
-native zp_get_zombie_class_info(classid, info[], len)
 
 /**
  * Called when the ZP round starts, i.e. first zombie

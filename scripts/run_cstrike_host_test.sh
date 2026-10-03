@@ -169,3 +169,21 @@ echo "================= MODULES ================="
 grep -a -A40 "Loaded modules\|amxx modules" console.txt | grep -a -E "fun|engine|fakemeta|cstrike|csx|nvault|hamsandwich|sockets|geoip|regex|sqlite|json" | head -20
 echo "================= LOG TAIL ================="
 tail -25 console.txt
+
+# ---------------- v34 evaluation ----------------
+echo "================= EVALUATION ================="
+PASS=1; FAIL=""
+grep -aq "HAM PROBE FIRED" console.txt   || { PASS=0; FAIL="$FAIL ham-probe-never-fired"; }
+grep -aq "\[HAM\] hooked player::spawn" console.txt || { PASS=0; FAIL="$FAIL ham-spawn-not-hooked"; }
+grep -aq "Crash: signal\|SIGSEGV\|Segmentation" console.txt && { PASS=0; FAIL="$FAIL CRASH"; }
+grep -aq "Run time error" console.txt && { PASS=0; FAIL="$FAIL amxx-runtime-error"; }
+# informational: the fake client never runs the jointeam flow, so ZP
+# calibration (mode=1) usually doesn't trigger here -- it happens on real
+# joins via the TeamInfo string oracle.
+ZPCAL=$(grep -ac "ZPDBG.*mode=1" console.txt || true)
+if [ "$PASS" = 1 ]; then
+        echo "RESULT: PASS — ham hook fired, no crashes on $ARCH (zp calibrations: $ZPCAL)"
+else
+        echo "RESULT: FAIL:$FAIL"
+fi
+exit $((1 - PASS))
