@@ -17,7 +17,7 @@ CXX=${CXX:-g++}
 
 mkdir -p "$OUT/obj"
 
-PC300_CFLAGS="-O2 -w -DLINUX -DENABLE_BINRELOC -DNO_MAIN -DPAWNC_DLL -DHAVE_STDINT_H -D_GNU_SOURCE -I$PC300"
+PC300_CFLAGS="-O2 -w -DNDEBUG -DLINUX -DENABLE_BINRELOC -DNO_MAIN -DPAWNC_DLL -DHAVE_STDINT_H -D_GNU_SOURCE -I$PC300"
 
 echo "== 1/2 libpc300 (pawn compiler core, static) =="
 PC300_OBJS=""
@@ -30,7 +30,7 @@ for src in sc1.c sc2.c sc3.c sc4.c sc5.c sc6.c sc7.c scvars.c scmemfil.c \
 done
 
 echo "== 2/2 amxxpc driver =="
-"$CXX" -O2 -w -DAMX_ANSIONLY -DHAVE_STDINT_H -DAMXXPC_NO_DLOPEN -include cstddef \
+"$CXX" -O2 -w -DNDEBUG -DAMX_ANSIONLY -DHAVE_STDINT_H -DAMXXPC_NO_DLOPEN -include cstddef \
         -I"$AMXXPC" -I"$AMXX_SRC/public" -I"$PC300" \
         "$HERE/amxxpc/amx_shim.cpp" \
         "$AMXXPC/amxxpc.cpp" \

@@ -277,7 +277,11 @@ void CHudMenu::ShowVGUIMenu( int menuType )
 	// cs16-amxx-android v24: PC CS 1.6 behaviour - while the HTML MOTD
 	// window is on screen, hold the team select menu back and show it
 	// right after the user presses OK (see HUD_Frame).
-	if( menuType == MENU_TEAM && gEngfuncs.pfnIsMOTDDialogActive && gEngfuncs.pfnIsMOTDDialogActive())
+	// cs16-amxx-android v33: also hold it back while the HUD-text fallback
+	// MOTD is visible (engine dialog unavailable) - otherwise the team menu
+	// covers the MOTD text and neither can be used ("MOTD behind the team
+	// menu, untouchable" user report). The fallback MOTD closes on +attack.
+	if( menuType == MENU_TEAM && (( gEngfuncs.pfnIsMOTDDialogActive && gEngfuncs.pfnIsMOTDDialogActive()) || gHUD.m_MOTD.m_bShow ))
 	{
 		m_iPendingVGUIMenu = menuType;
 		return;

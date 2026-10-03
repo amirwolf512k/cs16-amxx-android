@@ -348,9 +348,11 @@ void DLLEXPORT HUD_Frame( double time )
 {
 	// cs16-amxx-android v24: once the MOTD dialog is closed, show the
 	// team select menu that was held back by ShowVGUIMenu.
+	// cs16-amxx-android v33: also wait for the HUD-text fallback MOTD
+	// (visible when the engine dialog is unavailable) to be dismissed.
 	if( gHUD.m_Menu.m_iPendingVGUIMenu )
 	{
-		if( !gEngfuncs.pfnIsMOTDDialogActive || !gEngfuncs.pfnIsMOTDDialogActive())
+		if(( !gEngfuncs.pfnIsMOTDDialogActive || !gEngfuncs.pfnIsMOTDDialogActive()) && !gHUD.m_MOTD.m_bShow )
 		{
 			int pending = gHUD.m_Menu.m_iPendingVGUIMenu;
 			gHUD.m_Menu.m_iPendingVGUIMenu = 0;

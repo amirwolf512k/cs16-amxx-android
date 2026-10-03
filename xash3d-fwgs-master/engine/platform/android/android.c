@@ -140,7 +140,15 @@ qboolean Android_ShowMOTD( const char *title, const char *html )
         jboolean shown;
 
         if( !jni.env || !jni.activity || !jni.showMOTD )
+        {
+                // cs16-amxx-android v33: silent false here looked exactly like
+                // a broken MOTD on user devices ("MOTD dialog failed" with no
+                // reason). The most common cause: an outdated engine app whose
+                // XashActivity predates the v20 showMOTD Java method.
+                Con_Printf( S_WARN "Android_ShowMOTD: JNI not ready (env=%p activity=%p showMOTD=%p) - engine app too old for HTML MOTD dialogs?\n",
+                        jni.env, jni.activity, jni.showMOTD );
                 return false;
+        }
 
         // v30: the window title (server name, like the original HL1
         // VGUI MOTD window) is passed as a second raw byte array
@@ -148,7 +156,10 @@ qboolean Android_ShowMOTD( const char *title, const char *html )
         jtitle = (*jni.env)->NewByteArray( jni.env, (jsize)len );
 
         if( !jtitle )
+        {
+                Con_Printf( S_WARN "Android_ShowMOTD: NewByteArray(title) failed\n" );
                 return false;
+        }
 
         (*jni.env)->SetByteArrayRegion( jni.env, jtitle, 0, (jsize)len, (const jbyte *)title );
 
@@ -158,6 +169,7 @@ qboolean Android_ShowMOTD( const char *title, const char *html )
         if( !jbytes )
         {
                 (*jni.env)->DeleteLocalRef( jni.env, jtitle );
+                Con_Printf( S_WARN "Android_ShowMOTD: NewByteArray(html) failed\n" );
                 return false;
         }
 
@@ -174,7 +186,10 @@ qboolean Android_ShowMOTD( const char *title, const char *html )
         if( (*jni.env)->ExceptionCheck( jni.env ))
         {
                 (*jni.env)->ExceptionClear( jni.env );
-                return false;
+                Con_Printf( S_WARN "Android_ShowMOTD: pending JNI exception cleared (dialog shown=%d)\n", shown );
+                // v33: the dialog may already be on screen; trust the Java
+                // answer instead of discarding it
+                return shown ? true : false;
         }
 
         return shown ? true : false;

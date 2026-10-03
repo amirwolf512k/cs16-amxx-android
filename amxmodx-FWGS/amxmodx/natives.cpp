@@ -64,12 +64,12 @@ extern "C" int amxx_DynaFunc(AMX *amx, cell *params)
 int amxx_DynaCallback(int idx, AMX *amx, cell *params);
 extern "C" int amxx_DynaCodesize()
 {
-	return amxx_dyna_codesize();
+        return amxx_dyna_codesize();
 }
 
 extern "C" void amxx_DynaMake(char *pfn, int id)
 {
-	amxx_dyna_make(pfn, id, (void *)&amxx_DynaCallback);
+        amxx_dyna_make(pfn, id, (void *)&amxx_DynaCallback);
 }
 #endif
 
@@ -461,7 +461,15 @@ static cell AMX_NATIVE_CALL param_convert(AMX *amx, cell *params)
         unsigned char *data =amx->base+(int)((AMX_HEADER *)amx->base)->dat;
         unsigned char *realdata = caller->base+(int)((AMX_HEADER *)caller->base)->dat;
 
-        * (cell *)(data+(int)amx->frm+(p+2)*sizeof(cell)) -= (cell)(size_t)data-(cell)(size_t)realdata;
+        // cs16-amxx-android v33: compute the delta BEFORE truncating to a
+        // 32-bit cell. Truncating each 64-bit pointer separately gives a
+        // wrong delta whenever the two AMX heaps are more than 4 GiB apart
+        // (e.g. one mmap'd, one in the brk arena) — the converted string
+        // address then points outside the provider heap and the next
+        // get_string/strlen crashes the server. The pawn cell space is
+        // 32-bit, so the (wrapping) difference of the full pointers is
+        // what the frame cell actually needs.
+        *(cell *)(data+(int)amx->frm+(p+2)*sizeof(cell)) -= (cell)((intptr_t)data - (intptr_t)realdata);
 
         return 1;
 }
@@ -545,7 +553,7 @@ static cell AMX_NATIVE_CALL register_native(AMX *amx, cell *params)
 
 int GetRegisteredNativesCount()
 {
-	return (int)g_RegNatives.length();
+        return (int)g_RegNatives.length();
 }
 
 void ClearPluginLibraries()
