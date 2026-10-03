@@ -37,7 +37,10 @@ cp -r "$ROOT/stage/cstrike/addons" "$C/addons"
 mkdir -p "$C/addons/amxmodx/dlls" "$C/addons/amxmodx/modules" "$C/addons/metamod/dlls"
 cp "$HOST/libmm_amxmodx.so" "$C/addons/amxmodx/dlls/"
 cp "$HOST"/modules/libamxx_*.so "$C/addons/amxmodx/modules/"
-cp "$HOST/libmetamod_android_$ARCH.so" "$C/addons/metamod/dlls/libmetamod_android_amd64.so"
+# engine Q_buildarch reports amd64/arm64 per host -- provide every name
+for n in amd64 x86_64 arm64 aarch64; do
+        cp "$HOST/libmetamod_android_$ARCH.so" "$C/addons/metamod/dlls/libmetamod_android_$n.so"
+done
 
 # v38 changelevel test: NO battery (its Ham_Spawn hook on "player" calls a
 # wrong vtable slot with the locally built ReGameDLL -- documented v32 host-
