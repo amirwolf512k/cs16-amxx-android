@@ -57,10 +57,17 @@ class GameSettingsPreferenceFragment(val game: Game) : PreferenceFragmentCompat(
                         // app, which cannot read this app's SharedPreferences.
                         enableAmxx.setOnPreferenceChangeListener { _, newValue ->
                                 writeMetaMarker("amxmodx.disabled", newValue != true)
+                                patchIniFromPrefs(newValue == true,
+                                        preferenceManager.sharedPreferences
+                                                ?.getBoolean("enable_yapb_bots", true) == true)
                                 true
                         }
                         enableYaPBBots.setOnPreferenceChangeListener { _, newValue ->
                                 writeMetaMarker("yapb.disabled", newValue != true)
+                                patchIniFromPrefs(
+                                        preferenceManager.sharedPreferences
+                                                ?.getBoolean("enable_amxx", true) == true,
+                                        newValue == true)
                                 true
                         }
                 }
@@ -96,6 +103,40 @@ class GameSettingsPreferenceFragment(val game: Game) : PreferenceFragmentCompat(
                         if (present) marker.createNewFile() else marker.delete()
                 } catch (e: Exception) {
                         e.printStackTrace()
+                }
+        }
+
+        /** v35: apply the new switch state to plugins.ini immediately (not
+         *  only at the next launch), so bots can never keep spawning from a
+         *  stale ini while the user believes YaPB is off. */
+        private fun patchIniFromPrefs(amxxEnabled: Boolean, yapbEnabled: Boolean) {
+                if (!amxxEnabled && !yapbEnabled)
+                        return // metamod is bypassed entirely; ini content irrelevant
+
+                su.xash.engine.model.MetamodIniPatcher.patch(
+                        File(game.basedir, "addons/metamod"),
+                        amxxEnabled, yapbEnabled, resolveCsNativeLibDir())
+        }
+
+        /** v35: find the cs16client APK native lib dir (holds the YaPB lib). */
+        private fun resolveCsNativeLibDir(): String? {
+                return try {
+                        val pm = requireContext().packageManager
+                        val candidates = arrayOf(
+                                "su.xash.cs16clientamxx", "su.xash.cs16clientamxx.test",
+                                "su.xash.cs16client.test", "su.xash.cs16client")
+                        for (pn in candidates) {
+                                try {
+                                        pm.getPackageInfo(pn, 0).applicationInfo?.nativeLibraryDir
+                                                ?.let { if (it.isNotEmpty()) it else null }
+                                                ?.let { return it }
+                                } catch (e: Exception) {
+                                        // package not installed, try the next one
+                                }
+                        }
+                        null
+                } catch (e: Exception) {
+                        null
                 }
         }
 

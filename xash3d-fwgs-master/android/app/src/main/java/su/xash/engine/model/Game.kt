@@ -100,6 +100,22 @@ class Game(val ctx: Context, val basedir: File, val gameInfoFile: File) {
                 if (isCS) {
                         writeMetaMarker("amxmodx.disabled", !enableAmxx)
                         writeMetaMarker("yapb.disabled", !enableYapb)
+
+                        // v35: rewrite plugins.ini on THIS launch path too. It
+                        // used to be patched only by the cs16client launcher, so
+                        // starting the game from the engine icon kept a stale
+                        // YaPB line and bots joined even with the switch off.
+                        val csNativeLibDir = getPackageNamesForGameDir(basedir.name)
+                                ?.firstNotNullOfOrNull { pn ->
+                                        try {
+                                                getGameLibDir(ctx, pn)
+                                        } catch (e: Exception) {
+                                                null
+                                        }
+                                }
+                        MetamodIniPatcher.patch(
+                                File(basedir, "addons/metamod"),
+                                enableAmxx, enableYapb, csNativeLibDir)
                 }
 
                 if (basedir.name != defaultGameDir)
