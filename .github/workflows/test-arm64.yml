@@ -96,6 +96,16 @@ jobs:
           CS_HOST_TEST_MODE: ci
         run: bash scripts/run_cstrike_host_test.sh
 
+      # v38: map-change (changelevel) stress -- the user's device crashes when
+      # changing maps. The FULL chain (engine -> metamod -> AMXX -> real
+      # ReGameDLL -> YaPB bots -> Zombie Plague 4.3) runs while THREE real
+      # changelevel commands are driven through the dedicated server console;
+      # gate = 4 map spawns, ZP re-initialized on every map, zero crashes.
+      # On arm64 this is exactly the device configuration (YaPB enabled).
+      - name: Run changelevel (map-change) stress test
+        shell: bash
+        run: bash scripts/run_changelevel_test.sh
+
       # v17: client-connect regression test (the v16 device crash happened at
       # "Trying to connect with modern protocol" — dedicated CI runs never
       # connect a client, so that whole layer was untested)
@@ -133,6 +143,8 @@ jobs:
             out/client-test/engine.log
             out/cs-host-test/console.txt
             out/cs-host-test/engine.log
+            out/cs-changelevel-test/console.txt
+            out/cs-changelevel-test/engine.log
           if-no-files-found: warn
 
       - name: Telegram report
@@ -157,6 +169,13 @@ jobs:
             RES="$(printf '%s\n%s' "$RES" "✅ تست کامل cstrike روی arm64 موفق — هسته AMXX خودش cvarهای گم‌شده را می‌سازد (بدون پلاگین سازگاری) + کل API cvar سالم")"
           else
             RES="$(printf '%s\n%s' "$RES" "❌ تست کامل cstrike arm64 شکست — out/cs-host-test/console.txt را ببین")"
+          fi
+          # v38: changelevel (map-change) stress gate -- 4 map spawns, no crash
+          CLSPAWNS=$(grep -ac "Spawn Server" out/cs-changelevel-test/engine.log 2>/dev/null || echo 0)
+          if [ -f out/cs-changelevel-test/engine.log ] && [ "$CLSPAWNS" -ge 4 ] && ! grep -qiE "SIGSEGV|Segmentation|Sys_Crash|Crash: signal|Backtrace:" out/cs-changelevel-test/engine.log out/cs-changelevel-test/console.txt 2>/dev/null; then
+            RES="$(printf '%s\n%s' "$RES" "✅ تست تعویض مپ arm64 موفق — ۳ بار changelevel پشت‌سرهم با Zombie Plague + YaPB، هیچ کرشی نبود ($CLSPAWNS بار لود مپ)")"
+          else
+            RES="$(printf '%s\n%s' "$RES" "❌ تست تعویض مپ arm64 شکست — لاگ: out/cs-changelevel-test/engine.log")"
           fi
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
             -d chat_id="${{ secrets.TG_CHAT_ID }}" -d text="$RES" > /dev/null || true

@@ -61,6 +61,12 @@ public class XashActivity extends SDLActivity {
         private String mMotdBaseDir;
         private String mMotdGameDir;
         private Dialog mMotdDialog;
+        // v38: the MOTD WebView of the currently-open dialog. Every map
+        // change makes the server re-send the MOTD, so without explicit
+        // destroy() the old WebViews would pile up in the native renderer
+        // until the game dies -- exactly the "crash when I change the map"
+        // family of reports.
+        private WebView mMotdWebView;
 
         @Override
         protected void onCreate(Bundle savedInstanceState) {
@@ -347,12 +353,39 @@ public class XashActivity extends SDLActivity {
         private static final int MOTD_VGUI_TEXT = 0xFFFFAA00;
         private static final int MOTD_VGUI_BORDER = 0xFFB37700;
 
+        /** v38: destroy the previous MOTD WebView after its dialog is fully
+         *  detached (WebView.destroy() must never run while the view is still
+         *  attached to a window). Posted so it is ordered after dismiss. */
+        private void scheduleMotdWebViewDestroy() {
+                if ( mMotdWebView == null )
+                        return;
+
+                final WebView wv = mMotdWebView;
+                mMotdWebView = null;
+
+                new android.os.Handler( android.os.Looper.getMainLooper()).post(
+                        new Runnable() {
+                                @Override
+                                public void run() {
+                                        try {
+                                                wv.destroy();
+                                        } catch ( Throwable t ) {
+                                                Log.w( TAG, "MOTD WebView destroy failed", t );
+                                        }
+                                }
+                        } );
+        }
+
         private boolean showMOTDOnUiThread( byte[] titleBytes, byte[] htmlBytes ) {
                 try {
                         if ( mMotdDialog != null ) {
                                 mMotdDialog.dismiss();
                                 mMotdDialog = null;
                         }
+
+                        // v38: the previous map's WebView goes away with its
+                        // dialog — reclaim it before building a new one
+                        scheduleMotdWebViewDestroy();
 
                         String title = decodeMotdBytes( titleBytes );
                         String raw = new String( htmlBytes, "UTF-8" );
@@ -369,70 +402,55 @@ public class XashActivity extends SDLActivity {
                         w.setLayout( ViewGroup.LayoutParams.MATCH_PARENT,
                                         ViewGroup.LayoutParams.MATCH_PARENT );
 
-                        // the original window shades the whole screen behind
-                        // itself with a 100/255 black veil (CMenuPanel)
+                        // v38: NO fullscreen shade — the retail CS 1.6 MOTD
+                        // (CMenuPanel( iShadeFullscreen=0 )) leaves the game
+                        // at full brightness around the window, exactly like
+                        // the user's PC reference screenshot
                         FrameLayout root = new FrameLayout( this );
-                        root.setBackgroundColor( 0x64000000 );
+                        root.setBackgroundColor( 0x00000000 );
 
                         DisplayMetrics dm = getResources().getDisplayMetrics();
                         int screenW = dm.widthPixels;
                         int screenH = dm.heightPixels;
 
-                        // v37: 1:1 port of the ORIGINAL CS 1.6 MOTD window
-                        // (Valve's CMessageWindowPanel, cl_dll/
-                        // vgui_MOTDWindow.cpp, 640x480 coordinate space):
-                        // a 424x312 window, 1px LineBorder in (178,119,0),
-                        // title at (16,16), scrollable text area (16,48)
-                        // sized 392x204, bottom-left OK button 160x30 (the
-                        // real #Menu_OK CommandButton).  XRES/YRES scale
-                        // independently exactly like the PC game does on
-                        // widescreen; the steam-style CS-logo title bar is
-                        // flush with the window top like the reference UI.
-                        float sx = screenW / 640f;
-                        float sy = screenH / 480f;
-
-                        int panelW = Math.round( 424 * sx );
-                        int minW = Math.round( screenW * 0.62f );
-
-                        if ( panelW < minW )
-                                panelW = minW;
-
-                        int panelH = Math.round( 312 * sy );
-                        int maxH = Math.round( screenH * 0.86f );
-
-                        if ( panelH > maxH )
-                                panelH = maxH;
+                        // v38: 1:1 to the retail Steam CS 1.6 MOTD window
+                        // (pixel-measured from the user's reference):
+                        // ~71.5% of the screen width x ~90% of the height,
+                        // black at ~76% opacity (the game faintly shows
+                        // through), Valve LineBorder (178,119,0) around it.
+                        int panelW = Math.max( dp( 200 ), Math.round( screenW * 0.715f ));
+                        int panelH = Math.max( dp( 140 ), Math.round( screenH * 0.90f ));
 
                         LinearLayout panel = new LinearLayout( this );
                         panel.setOrientation( LinearLayout.VERTICAL );
-                        panel.setBackground( makeMOTDWindowBackground( sy ));
+                        panel.setBackground( makeMOTDWindowBackground());
                         FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams( panelW, panelH );
                         panelLp.gravity = Gravity.CENTER;
                         root.addView( panel, panelLp );
 
-                        // v37: the classic CS 1.6 title bar — a full-width
-                        // dark strip flush with the window top (like the PC
-                        // reference UI), CS soldier logo left, amber caption
-                        // next to it.  Title text color = the VGUI "Title
-                        // Font" scheme color (255,170,0).
+                        // v38: title row like the reference — the CS soldier
+                        // logo left, amber "Title Font" caption, sitting
+                        // directly on the window background (no bar strip;
+                        // the game shows through it), with a thin light
+                        // separator line along its bottom edge.
+                        int titleH = Math.round( panelH * 0.125f );
                         LinearLayout titleBar = new LinearLayout( this );
                         titleBar.setOrientation( LinearLayout.HORIZONTAL );
                         titleBar.setGravity( Gravity.CENTER_VERTICAL );
-                        titleBar.setBackground( makeMOTDTitleBarBackground());
 
                         ImageView logo = new ImageView( this );
                         logo.setImageResource( R.drawable.cs_logo );
                         logo.setScaleType( ImageView.ScaleType.FIT_CENTER );
-                        int logoSize = Math.max( dp( 18 ), Math.round( 24 * sy ));
+                        int logoSize = Math.round( titleH * 0.62f );
                         LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(
                                         logoSize, logoSize );
-                        logoLp.setMargins( Math.round( 8 * sx ), 0, Math.round( 8 * sx ), 0 );
+                        logoLp.setMargins( Math.round( panelW * 0.035f ), 0, Math.round( panelW * 0.02f ), 0 );
                         titleBar.addView( logo, logoLp );
 
                         TextView titleView = new TextView( this );
                         titleView.setText(( title != null && !title.isEmpty()) ? title : "Counter-Strike" );
                         titleView.setTextColor( MOTD_VGUI_TEXT );
-                        titleView.setTextSize( TypedValue.COMPLEX_UNIT_SP, 17 );
+                        titleView.setTextSize( TypedValue.COMPLEX_UNIT_PX, Math.round( titleH * 0.42f ));
                         titleView.setTypeface( Typeface.DEFAULT_BOLD );
                         titleView.setSingleLine( true );
                         titleView.setEllipsize( TextUtils.TruncateAt.END );
@@ -440,12 +458,14 @@ public class XashActivity extends SDLActivity {
                         titleBar.addView( titleView, new LinearLayout.LayoutParams(
                                         0, ViewGroup.LayoutParams.MATCH_PARENT, 1f ));
 
-                        // flush with the window top, full width (the title bar
-                        // is part of the frame, not a floating strip)
-                        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
-                                        ViewGroup.LayoutParams.MATCH_PARENT,
-                                        Math.max( dp( 28 ), Math.round( 36 * sy )));
-                        panel.addView( titleBar, titleLp );
+                        panel.addView( titleBar, new LinearLayout.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT, titleH ));
+
+                        // v38: light 1px separator line under the title row
+                        View titleSep = new View( this );
+                        titleSep.setBackground( new ColorDrawable( 0x99B4B8BC ));
+                        panel.addView( titleSep, new LinearLayout.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT, Math.max( 1, dp( 1 )) ));
 
                         // --- content: the sandboxed WebView plays the role of
                         // the original ScrollPanel + TextPanel; HTML MOTDs
@@ -456,17 +476,20 @@ public class XashActivity extends SDLActivity {
                         // client never degrades to raw-text HUD garbage.
                         View content;
 
-                        // v35: the content sits inside a thin-bordered black
-                        // frame, like the TextPanel of the PC window
+                        // v38: the content sits in a PURE BLACK box with no
+                        // border of its own (the ScrollPanel client area of
+                        // the PC window) — the framed look comes from the
+                        // window chrome around it
                         LinearLayout contentWrap = new LinearLayout( this );
                         contentWrap.setOrientation( LinearLayout.VERTICAL );
-                        contentWrap.setBackground( makeMOTDContentBorder());
+                        contentWrap.setBackgroundColor( 0xFF000000 );
 
                         try {
                                 WebView wv = createMOTDWebView( gameDir );
                                 wv.setBackgroundColor( 0xFF000000 );
                                 wv.loadDataWithBaseURL( "https://motd.local/", buildMOTDDocument( raw ),
                                                 "text/html", "utf-8", null );
+                                mMotdWebView = wv;
                                 content = wv;
                         } catch ( Throwable wt ) {
                                 consolePrintf( "MOTD: WebView unavailable (" + wt + "), using styled text" );
@@ -486,26 +509,27 @@ public class XashActivity extends SDLActivity {
 
                         LinearLayout.LayoutParams contentLp = new LinearLayout.LayoutParams(
                                         ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f );
-                        contentLp.setMargins( Math.round( 16 * sx ), Math.round( 8 * sy ),
-                                        Math.round( 16 * sx ), 0 );
+                        contentLp.setMargins( Math.round( panelW * 0.023f ), Math.round( panelH * 0.085f ),
+                                        Math.round( panelW * 0.023f ), 0 );
                         panel.addView( contentWrap, contentLp );
 
-                        // --- v37: the REAL OK button, 1:1 from
-                        // CMessageWindowPanel: CommandButton( "#Menu_OK",
-                        // x+16, y+height-16-30, XRES(160), YRES(30) ) — a
-                        // proper-sized button at the BOTTOM-LEFT of the
-                        // window, dark body + light 1px border + light label
-                        // (the CS VGUI command-button look)
+                        // --- v38: the reference OK button — small, bottom-left:
+                        // ~20.5% of the window wide, ~4.6% tall, near-black
+                        // body with a thin LIGHT-GRAY frame (the VGUI
+                        // CommandButton look) and an AMBER label; the empty
+                        // window band below it matches the reference too.
+                        int okW = Math.max( dp( 64 ), Math.round( panelW * 0.205f ));
+                        int okH = Math.max( dp( 22 ), Math.round( panelH * 0.046f ));
+
                         Button ok = new Button( this );
                         ok.setText( "OK" );
                         ok.setAllCaps( false );
-                        ok.setTextColor( 0xFFDEDEDE );
-                        ok.setTextSize( TypedValue.COMPLEX_UNIT_SP, 15 );
-                        ok.setTypeface( Typeface.DEFAULT_BOLD );
+                        ok.setTextColor( MOTD_VGUI_TEXT );
+                        ok.setTextSize( TypedValue.COMPLEX_UNIT_PX, Math.round( okH * 0.5f ));
                         ok.setBackground( makeMOTDButtonBackground());
                         ok.setStateListAnimator( null );
                         ok.setElevation( 0f );
-                        ok.setPadding( dp( 10 ), 0, dp( 10 ), 0 );
+                        ok.setPadding( dp( 6 ), 0, dp( 6 ), 0 );
                         ok.setOnClickListener( new View.OnClickListener() {
                                         @Override
                                         public void onClick( View v ) {
@@ -513,12 +537,9 @@ public class XashActivity extends SDLActivity {
                                         }
                         } );
 
-                        int okW = Math.max( dp( 96 ), Math.round( 160 * sx ));
-                        int okH = Math.max( dp( 34 ), Math.round( 30 * sy ));
-
                         LinearLayout.LayoutParams okLp = new LinearLayout.LayoutParams( okW, okH );
-                        okLp.setMargins( Math.round( 16 * sx ), Math.round( 10 * sy ),
-                                        Math.round( 16 * sx ), Math.round( 14 * sy ));
+                        okLp.setMargins( Math.round( panelW * 0.112f ), Math.round( panelH * 0.02f ),
+                                        0, Math.round( panelH * 0.16f ));
                         panel.addView( ok, okLp );
 
                         dialog.setContentView( root );
@@ -526,6 +547,9 @@ public class XashActivity extends SDLActivity {
                                 @Override
                                 public void onDismiss( DialogInterface d ) {
                                         mMotdDialog = null;
+                                        // v38: reclaim the WebView when the user
+                                        // closes the dialog with OK/back too
+                                        scheduleMotdWebViewDestroy();
                                         notifyMOTDClosed();
                                 }
                         } );
@@ -632,43 +656,26 @@ public class XashActivity extends SDLActivity {
                 return "<font color='#dedede'><pre>" + escapeMOTDHtml( trimmed ) + "</pre></font>";
         }
 
-        /** v35: the classic CS 1.6 window body — dark olive frame
-         *  (sampled from the PC screenshot: 37,31,24) with a subtle
-         *  lighter outline, replacing the v30 pure-black panel. */
-        private Drawable makeMOTDWindowBackground( float sy ) {
+        /** v38: the reference window — black at ~76% opacity (the game
+         *  faintly shows through, like the PC retail MOTD over the map)
+         *  with Valve's 1px LineBorder (178,119,0). */
+        private Drawable makeMOTDWindowBackground() {
                 GradientDrawable d = new GradientDrawable();
-                d.setColor( 0xF2251F18 );
-                d.setStroke( Math.max( 1, dp( 1 )), 0xFF6B5D48 );
+                d.setColor( 0xC2000000 );
+                d.setStroke( Math.max( 1, dp( 1 )), MOTD_VGUI_BORDER );
                 return d;
         }
 
-        /** v35: the title bar strip — near-black with a subtle border,
-         *  straight from the PC screenshot (44,42,40). */
-        private Drawable makeMOTDTitleBarBackground() {
-                GradientDrawable d = new GradientDrawable();
-                d.setColor( 0xFF2C2A28 );
-                d.setStroke( 1, 0xFF6B5D48 );
-                return d;
-        }
-
-        /** v35: 1px bordered black frame around the content (TextPanel). */
-        private Drawable makeMOTDContentBorder() {
-                GradientDrawable d = new GradientDrawable();
-                d.setColor( 0xFF000000 );
-                d.setStroke( 1, 0xFF403A32 );
-                return d;
-        }
-
-        /** v35: the classic small "ok" button — dark olive body, light
-         *  1px border, light label; amber when pressed. */
+        /** v38: the small command button — near-black body, thin light-gray
+         *  frame (the VGUI CommandButton look), amber when pressed. */
         private StateListDrawable makeMOTDButtonBackground() {
                 GradientDrawable normal = new GradientDrawable();
-                normal.setColor( 0xFF292119 );
-                normal.setStroke( 1, 0xFFC8C4BC );
+                normal.setColor( 0xE6000000 );
+                normal.setStroke( Math.max( 1, dp( 1 )), 0xFFC8C4BC );
 
                 GradientDrawable pressed = new GradientDrawable();
-                pressed.setColor( 0xFF3A3020 );
-                pressed.setStroke( 1, MOTD_VGUI_TEXT );
+                pressed.setColor( 0xFF3A2E10 );
+                pressed.setStroke( Math.max( 1, dp( 1 )), MOTD_VGUI_TEXT );
 
                 StateListDrawable sld = new StateListDrawable();
                 sld.addState( new int[] { android.R.attr.state_pressed }, pressed );
