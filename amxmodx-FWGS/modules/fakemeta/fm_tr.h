@@ -62,8 +62,8 @@ extern FM_HandleSlot g_fm_ucmd_slots[FM_HANDLE_SLOTS];   // usercmd_t (FM_CmdSta
 extern FM_HandleSlot g_fm_kvd_slots[FM_HANDLE_SLOTS];    // KeyValueData (FM_KeyValue + create_kvd)
 extern FM_HandleSlot g_fm_info_slots[FM_HANDLE_SLOTS];   // infobuffer (EngFunc_GetInfoKeyBuffer NULL-edict case)
 
-cell  FM_AcquireHookHandle(FM_HandleSlot *slots, void *ptr);
-cell  FM_AcquireStableHandle(FM_HandleSlot *slots, void *ptr);
+cell  FM_AcquireHookHandle(FM_HandleSlot *slots, const void *ptr);
+cell  FM_AcquireStableHandle(FM_HandleSlot *slots, const void *ptr);
 void *FM_ResolveHandle(FM_HandleSlot *slots, cell handle);
 void  FM_ReleaseStableHandle(FM_HandleSlot *slots, cell handle);
 

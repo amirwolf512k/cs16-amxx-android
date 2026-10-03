@@ -50,7 +50,7 @@ static cell FM_MakeHandle(int slot, uint32_t gen)
         return static_cast<cell>((((gen & FM_HANDLE_GEN_MASK) << 6) | (slot + 1)) & 0x7FFFFFFF);
 }
 
-cell FM_AcquireHookHandle(FM_HandleSlot *slots, void *ptr)
+cell FM_AcquireHookHandle(FM_HandleSlot *slots, const void *ptr)
 {
         if (!ptr)
                 return 0;
@@ -62,14 +62,14 @@ cell FM_AcquireHookHandle(FM_HandleSlot *slots, void *ptr)
         if (gen == 0)
                 gen = ++g_fm_handle_gen & FM_HANDLE_GEN_MASK;
 
-        slots[slot].ptr = ptr;
+        slots[slot].ptr = const_cast<void *>(ptr);
         slots[slot].gen = gen;
         slots[slot].used = true;
 
         return FM_MakeHandle(slot, gen);
 }
 
-cell FM_AcquireStableHandle(FM_HandleSlot *slots, void *ptr)
+cell FM_AcquireStableHandle(FM_HandleSlot *slots, const void *ptr)
 {
         if (!ptr)
                 return 0;
@@ -82,7 +82,7 @@ cell FM_AcquireStableHandle(FM_HandleSlot *slots, void *ptr)
                         if (gen == 0)
                                 gen = ++g_fm_handle_gen & FM_HANDLE_GEN_MASK;
 
-                        slots[slot].ptr = ptr;
+                        slots[slot].ptr = const_cast<void *>(ptr);
                         slots[slot].gen = gen;
                         slots[slot].used = true;
 
