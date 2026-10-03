@@ -24,7 +24,7 @@ public class MainActivity extends Activity {
 
         // bump this when assets/addons.zip is updated so the bundle
         // gets re-extracted into the game directory
-        private static final String ADDONS_VERSION = "amxx-v31-repo";
+        private static final String ADDONS_VERSION = "amxx-v32-repo";
 
         private boolean mPermissionAsked = false;
 
@@ -199,6 +199,32 @@ public class MainActivity extends Activity {
                 // (Xash3D FWGS (AMXX)) at valve game launch since v9.
                 extractZipIfNeeded( "addons.zip", "addons_version",
                         "cstrike/addons/metamod/dlls/libmetamod_android_arm64.so" );
+
+                // v32: the bundled BaseBuilder plugins were removed by request.
+                // Delete the copies this app shipped in <=v31 (including the
+                // still-broken bbzones.amxx that aborted every map start with
+                // "Invalid file handle 0 used in native fclose") so stale
+                // files can't shadow the user's own install.
+                String[] staleFiles = {
+                        "cstrike/addons/amxmodx/plugins/bbzones.amxx",
+                        "cstrike/addons/amxmodx/plugins/Pro_basebuilder.amxx",
+                        "cstrike/addons/amxmodx/plugins/bb_classes65.amxx",
+                        "cstrike/addons/amxmodx/plugins/frostNadeTURBO.amxx",
+                        "cstrike/addons/amxmodx/plugins/napalmNadeTURBO.amxx",
+                        "cstrike/addons/amxmodx/plugins/granadePushTURBO.amxx",
+                        "cstrike/addons/amxmodx/configs/Pro_basebuilder.ini",
+                        "cstrike/addons/amxmodx/scripting/include/basebuilder.inc",
+                };
+
+                for( String rel : staleFiles ) {
+                        try {
+                                File f = new File( getXashDir(), rel );
+                                if( f.isFile() && f.delete() )
+                                        Log.i( TAG, "removed stale addons file: " + rel );
+                        } catch( Throwable t ) {
+                                Log.w( TAG, "could not remove " + rel, t );
+                        }
+                }
 
                 // v12: keep plugins.ini in sync with this app's nativeLibraryDir
                 // (YaPB as metamod plugin) - must run on every launch in case the

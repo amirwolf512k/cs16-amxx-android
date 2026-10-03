@@ -61,6 +61,32 @@ static void MOTD_StripHTML( CUtlString &text )
                         tag = src + i + 1;
                         taglen = (size_t)( end - tag );
 
+                        // v32: a <style>/<script> body is not text — skip the
+                        // whole block, otherwise the HUD fallback prints the
+                        // raw CSS as visible garbage (v31 device screenshot)
+                        if(( taglen >= 5 && !strncasecmp( tag, "style", 5 )) ||
+                           ( taglen >= 6 && !strncasecmp( tag, "script", 6 )))
+                        {
+                                char closing[16];
+                                const char *close;
+
+                                Q_snprintf( closing, sizeof( closing ), "</%.*s",
+                                        (int)(( taglen >= 6 ) ? 6 : 5 ), tag );
+
+                                close = strcasestr( end, closing );
+
+                                if( close )
+                                        i = (size_t)( close - src ) + strlen( closing );
+                                else
+                                        i = n; // unterminated block: drop the rest
+
+                                // swallow the '>' that closes the end tag
+                                if( i < n && src[i] == '>' )
+                                        i++;
+
+                                continue;
+                        }
+
                         // block-level tags act as line breaks in the plain-text view
                         if(( taglen >= 2 && !strncasecmp( tag, "br", 2 )) ||
                            ( taglen >= 2 && !strncasecmp( tag, "/p", 2 )) ||

@@ -684,16 +684,16 @@ void C_ServerActivate(edict_t *pEdictList, int edictCount, int clientMax)
 
         if (g_isDropClientHookAvailable && !g_isDropClientHookEnabled)
         {
-        	if (RehldsApi)
-        	{
-        		RehldsHookchains->SV_DropClient()->registerHook(SV_DropClient_RH);
-        		g_isDropClientHookEnabled = true;
-        	}
-        	else if (DropClientDetour)
-        	{
-        		DropClientDetour->EnableDetour();
-        		g_isDropClientHookEnabled = true;
-        	}
+                if (RehldsApi)
+                {
+                        RehldsHookchains->SV_DropClient()->registerHook(SV_DropClient_RH);
+                        g_isDropClientHookEnabled = true;
+                }
+                else if (DropClientDetour)
+                {
+                        DropClientDetour->EnableDetour();
+                        g_isDropClientHookEnabled = true;
+                }
         }
 
         RETURN_META(MRES_IGNORED);
@@ -773,15 +773,15 @@ void C_ServerDeactivate()
 
         if (g_isDropClientHookAvailable && g_isDropClientHookEnabled)
         {
-        	if (RehldsApi)
-        	{
-        		RehldsHookchains->SV_DropClient()->unregisterHook(SV_DropClient_RH);
-        	}
-        	else if (DropClientDetour)
-        	{
-        		DropClientDetour->DisableDetour();
-        	}
-        	g_isDropClientHookEnabled = false;
+                if (RehldsApi)
+                {
+                        RehldsHookchains->SV_DropClient()->unregisterHook(SV_DropClient_RH);
+                }
+                else if (DropClientDetour)
+                {
+                        DropClientDetour->DisableDetour();
+                }
+                g_isDropClientHookEnabled = false;
         }
 
         g_players_num   = 0;
@@ -1796,7 +1796,15 @@ C_DLLEXPORT     int     Meta_Detach(PLUG_LOADTIME now, PL_UNLOAD_REASON reason)
                 }
                 else
                 {
-                        DropClientDetour->Destroy();
+                        // cs16-amxx-android v32: the Xash3D fallback above sets
+                        // g_isDropClientHookAvailable without creating the detour
+                        // (the engine does not export SV_DropClient) — destroying a
+                        // null detour here SIGSEGV'd in CDetour::Destroy on every
+                        // server shutdown / map change (v31 crash forensics).
+                        if (DropClientDetour)
+                        {
+                                DropClientDetour->Destroy();
+                        }
                 }
                 g_isDropClientHookAvailable = false;
                 g_isDropClientHookEnabled = false;

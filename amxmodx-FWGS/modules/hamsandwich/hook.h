@@ -147,9 +147,11 @@ public:
         }
 };
 
+#ifdef USE_LIBFFCALL
 static void TestTrampoline()
 {
         MF_Log( "Called trampoline %p:%s", hook, hook->methodname);
 }
+#endif
 
 #endif

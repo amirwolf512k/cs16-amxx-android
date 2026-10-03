@@ -16,7 +16,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings.Secure;
+import android.text.Html;
 import android.text.TextUtils;
+import android.text.method.ScrollingMovementMethod;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.TypedValue;
@@ -283,6 +285,21 @@ public class XashActivity extends SDLActivity {
                 }
         }
 
+        // v32: surface Java-side MOTD failures INSIDE the game console (the
+        // engine's Con_Printf). Logcat-only diagnostics were invisible on
+        // user devices: every "MOTD dialog failed" report arrived with no
+        // clue WHY (v31 device log showed the dialog returning false with
+        // no reason anywhere).
+        private static native void nativeConsolePrintf( String s );
+
+        private static void consolePrintf( String s ) {
+                try {
+                        nativeConsolePrintf( s );
+                } catch ( Throwable t ) {
+                        Log.w( TAG, "consolePrintf failed", t );
+                }
+        }
+
         /** Called from native (JNI) with the window title (the server name,
          *  like the original HL1 VGUI MOTD window) and the raw MOTD payload.
          *  v22: runs the dialog creation synchronously on the UI thread and
@@ -310,8 +327,12 @@ public class XashActivity extends SDLActivity {
                 try {
                         // the engine render thread blocks briefly here; the UI thread
                         // is independent, so this cannot deadlock
-                        if ( !latch.await( 5, java.util.concurrent.TimeUnit.SECONDS ) )
+                        if ( !latch.await( 5, java.util.concurrent.TimeUnit.SECONDS ) ) {
+                                // v32: make the timeout visible — it is indistinguishable
+                                // from a dead activity otherwise
+                                consolePrintf( "MOTD: UI thread did not answer within 5s (dialog skipped)" );
                                 return false;
+                        }
                 } catch ( InterruptedException e ) {
                         return false;
                 }
@@ -411,17 +432,36 @@ public class XashActivity extends SDLActivity {
 
                         // --- content: the sandboxed WebView plays the role of
                         // the original ScrollPanel + TextPanel; HTML MOTDs
-                        // render for real, plain text is wrapped game-styled ---
-                        WebView wv = createMOTDWebView( gameDir );
-                        wv.setBackgroundColor( 0x00000000 );
-                        wv.loadDataWithBaseURL( "https://motd.local/", buildMOTDDocument( raw ),
-                                        "text/html", "utf-8", null );
+                        // render for real, plain text is wrapped game-styled.
+                        // v32: if WebView is unavailable (provider missing,
+                        // device policy, ...) fall back to a styled TextView via
+                        // Html.fromHtml — the dialog still returns true, so the
+                        // client never degrades to raw-text HUD garbage.
+                        View content;
+
+                        try {
+                                WebView wv = createMOTDWebView( gameDir );
+                                wv.setBackgroundColor( 0x00000000 );
+                                wv.loadDataWithBaseURL( "https://motd.local/", buildMOTDDocument( raw ),
+                                                "text/html", "utf-8", null );
+                                content = wv;
+                        } catch ( Throwable wt ) {
+                                consolePrintf( "MOTD: WebView unavailable (" + wt + "), using styled text" );
+
+                                TextView tv = new TextView( this );
+                                tv.setText( Html.fromHtml( buildMOTDTextHtml( raw ) ) );
+                                tv.setMovementMethod( ScrollingMovementMethod.getInstance() );
+                                tv.setTextColor( 0xFFC4B577 );
+                                tv.setTextSize( TypedValue.COMPLEX_UNIT_SP, 14 );
+                                tv.setLinkTextColor( MOTD_VGUI_TEXT );
+                                content = tv;
+                        }
 
                         LinearLayout.LayoutParams contentLp = new LinearLayout.LayoutParams(
                                         ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f );
                         contentLp.setMargins( Math.round( 16 * sx ), Math.round( 6 * sy ),
                                         Math.round( 16 * sx ), 0 );
-                        panel.addView( wv, contentLp );
+                        panel.addView( content, contentLp );
 
                         // --- OK: the original CommandButton, bottom-left
                         // (16, tall - 16 - BUTTON_SIZE_Y), 160x30 in window
@@ -466,6 +506,8 @@ public class XashActivity extends SDLActivity {
                         return true;
                 } catch ( Throwable t ) {
                         Log.w( TAG, "showMOTD failed", t );
+                        // v32: the reason must reach the game console, not only logcat
+                        consolePrintf( "MOTD: dialog error: " + t );
                         return false;
                 }
         }
@@ -527,6 +569,37 @@ public class XashActivity extends SDLActivity {
 
         private static String escapeMOTDHtml( String s ) {
                 return s.replace( "&", "&amp;" ).replace( "<", "&lt;" ).replace( ">", "&gt;" );
+        }
+
+        /** v32: simplified document for the Html.fromHtml fallback path.
+         *  fromHtml understands basic tags only (no CSS), so block elements
+         *  are mapped to newlines and the body carries the HL1 tan color. */
+        private static String buildMOTDTextHtml( String raw ) {
+                String trimmed = raw == null ? "" : raw.trim();
+                String lower = trimmed.toLowerCase( Locale.US );
+
+                boolean looksHtml = lower.contains( "<html" ) || lower.contains( "<body" )
+                        || lower.contains( "<head" ) || lower.contains( "<title" )
+                        || lower.contains( "<meta" ) || lower.contains( "<style" )
+                        || lower.contains( "<br" ) || lower.contains( "<p>" ) || lower.contains( "<p " )
+                        || lower.contains( "<table" ) || lower.contains( "<div" ) || lower.contains( "<font" )
+                        || lower.contains( "<img" ) || lower.contains( "<center" ) || lower.contains( "<span" )
+                        || lower.contains( "<h1" ) || lower.contains( "<h2" ) || lower.contains( "<h3" )
+                        || lower.contains( "<h4" ) || lower.contains( "<h5" ) || lower.contains( "<h6" )
+                        || lower.contains( "<li" ) || lower.contains( "<pre" )
+                        || lower.contains( "<b>" ) || lower.contains( "<i>" ) || lower.contains( "<u>" )
+                        || lower.contains( "<em>" ) || lower.contains( "<strong" )
+                        || lower.contains( "<hr" ) || lower.contains( "<a " ) || lower.contains( "<!doctype" );
+
+                if ( looksHtml ) {
+                        // drop <style>/<script> bodies — fromHtml would print them as text
+                        String noCss = trimmed
+                                .replaceAll( "(?is)<style[^>]*>.*?</style>", "" )
+                                .replaceAll( "(?is)<script[^>]*>.*?</script>", "" );
+                        return "<font color='#c4b577'>" + noCss + "</font>";
+                }
+
+                return "<font color='#c4b577'><pre>" + escapeMOTDHtml( trimmed ) + "</pre></font>";
         }
 
         /** v30: the original CMessageWindowPanel body — opaque black with

@@ -94,23 +94,69 @@ build_module() { # <name> <dir> <srcs...>  (MODULE_CFLAGS may hold extra flags)
 
 build_module fun fun fun
 build_module engine engine amxxapi engine entity forwards globals
-build_module fakemeta fakemeta dllfunc engfunc fakemeta_amxx fm_tr fm_tr2 forward glb misc pdata pdata_entities pdata_gamerules pev
-build_module cstrike cstrike/cstrike CstrikeHacks CstrikeItemsInfos CstrikeMain CstrikeNatives CstrikePlayer CstrikeUserMessages CstrikeUtils
+# v32: fakemeta carries its own resdk glue (see cstrike above)
+build_module fakemeta fakemeta dllfunc engfunc fakemeta_amxx fm_tr fm_tr2 forward glb misc pdata pdata_entities pdata_gamerules pev \
+                "$AMXX/public/resdk/mod_regamedll_api.cpp"
+# v32: -DNO_HACKS matches the module's official CMakeLists build and is
+# required on Xash3D (no HLDS svs/sv globals; pure-engfuncs model updates).
+# mod_rehlds_api/mod_regamedll_api are compiled in statically (same as the
+# Android Android.mk) so the module resolves the ReGameDLL/ReHLDS APIs via
+# metamod's gamedll path instead of importing undefined symbols.
+MODULE_CFLAGS="-DNO_HACKS" \
+        build_module cstrike cstrike/cstrike CstrikeHacks CstrikeItemsInfos CstrikeMain CstrikeNatives CstrikePlayer CstrikeUserMessages CstrikeUtils \
+                "$AMXX/public/resdk/mod_rehlds_api.cpp" "$AMXX/public/resdk/mod_regamedll_api.cpp"
 build_module csx cstrike/csx CMisc CRank meta_api rank usermsg
 build_module nvault nvault Binary Journal NVault amxxapi
 build_module sockets sockets sockets
 
-# v25: hamsandwich on the host — uses the same hand-written libffcall-
-# compatible trampoline shim as Android (ARM machine code; on non-ARM
-# hosts alloc_trampoline returns NULL and hooks are skipped gracefully)
-MODULE_CFLAGS="-DUSE_LIBFFCALL -I$HERE/trampoline" \
-        build_module hamsandwich hamsandwich amxx_api config_parser \
+# v32: hamsandwich on the host uses the upstream generic trampoline
+# (Trampolines.h CreateGenericTrampoline) instead of the ARM libffcall
+# shim — x86_64 hooks become REAL, matching what arm64 gets via the shim
+build_module hamsandwich hamsandwich amxx_api config_parser \
         hook_callbacks hook_native srvcmd call_funcs hook_create \
-        DataHandler pdata hook_specialbot "$HERE/trampoline/trampoline.c"
+        DataHandler pdata hook_specialbot
 
 # v25: cs_ham_bots_api library-anchor module (zombie plague mods; the
 # natives live in hamsandwich + the staged cs_ham_bots_api.amxx plugin)
 build_module cs_ham_bots_api cs_ham_bots_api amxxapi
+
+# v32: regex / geoip / json / sqlite — the remaining staged modules. These
+# mix C third-party sources (pcre/maxminddb/parson/sqlite3) with C++ module
+# code, so compile C with gcc and C++ with g++ instead of via build_module.
+build_c_module() { # <name> <dir> <cflags> <c-srcs...> -- <cxx-srcs...>
+        local name=$1 dir=$2 cflags=$3; shift 3
+        local csrcs=() cxxsrcs=() in_cxx=0 o="" src=""
+        for s in "$@"; do
+                if [ "$s" = "--" ]; then in_cxx=1; continue; fi
+                if [ $in_cxx -eq 0 ]; then csrcs+=("$s"); else cxxsrcs+=("$s"); fi
+        done
+        mkdir -p "$OUT/obj_$name"
+        local objs=""
+        for src in "${csrcs[@]}"; do
+                o="$OUT/obj_$name/$(basename "$src" | tr '/.' '__').o"
+                gcc $COMMON $cflags -std=gnu99 -c -o "$o" "$src"
+                objs="$objs $o"
+        done
+        for src in "${cxxsrcs[@]}"; do
+                o="$OUT/obj_$name/$(basename "$src" | tr '/.' '__').o"
+                if [ -f "$src" ]; then :; else src="$AMXX/modules/$dir/$src.cpp"; fi
+                $CXX $COMMON $cflags -I"$AMXX/modules/$dir" -c -o "$o" "$src"
+                objs="$objs $o"
+        done
+        $CXX $COMMON -shared -o "$OUT/modules/libamxx_$name.so" $objs $THIRDPARTY_O
+        echo "  => libamxx_$name.so"
+}
+
+PCRE=$(ls "$AMXX"/third_party/pcre/pcre_*.c | grep -v dftables)
+build_c_module regex regex "-DPCRE_STATIC -DHAVE_CONFIG_H" $PCRE -- "$AMXX/public/sdk/amxxmodule.cpp" CRegEx module utils
+build_c_module geoip geoip "-I$AMXX/third_party/libmaxminddb" \
+        "$AMXX/third_party/libmaxminddb/maxminddb.c" -- "$AMXX/public/sdk/amxxmodule.cpp" geoip_main geoip_natives geoip_util
+build_c_module json json "" \
+        "$AMXX/third_party/parson/parson.c" -- "$AMXX/public/sdk/amxxmodule.cpp" JsonMngr JsonNatives
+build_c_module sqlite sqlite "-I$AMXX/modules/sqlite/sqlitepp -I$AMXX/modules/sqlite/thread -DSM_DEFAULT_THREADER -pthread" \
+        "$AMXX/third_party/sqlite/sqlite3.c" -- "$AMXX/public/sdk/amxxmodule.cpp" basic_sql handles module threading oldcompat_sql \
+        thread/BaseWorker thread/ThreadWorker sqlitepp/SqliteQuery sqlitepp/SqliteResultSet \
+        sqlitepp/SqliteDatabase sqlitepp/SqliteDriver thread/PosixThreads
 
 echo "== building metamod (host) =="
 MMSRC="$ROOT/metamod-p-velaron/metamod"

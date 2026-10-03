@@ -116,6 +116,13 @@ def build():
     entities = (
         '{\n"classname" "worldspawn"\n"wad" ""\n"sounds" "1"\n"mapversion" "220"\n}\n'
         '{\n"classname" "info_player_start"\n"origin" "0 0 36"\n"angle" "0"\n}\n'
+        # v32: Counter-Strike spawns its T-side players from
+        # info_player_deathmatch — without it the CS gamedll fails
+        # PutClientInServer ("no info_player_start on level") and any
+        # bot connecting on a host test map crashes in its constructor
+        '{\n"classname" "info_player_deathmatch"\n"origin" "40 0 36"\n"angle" "0"\n}\n'
+        '{\n"classname" "info_player_deathmatch"\n"origin" "-40 0 36"\n"angle" "0"\n}\n'
+        '{\n"classname" "info_player_spectator"\n"origin" "0 60 36"\n"angle" "0"\n}\n'
         '{\n"classname" "light"\n"origin" "0 0 140"\n"light" "400"\n}\n'
         '{\n"classname" "light_environment"\n"origin" "0 0 160"\n"_light" "255 255 255 200"\n}\n'
     ).encode()
