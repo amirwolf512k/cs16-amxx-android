@@ -70,7 +70,7 @@ static void MOTD_StripHTML( CUtlString &text )
                                 char closing[16];
                                 const char *close;
 
-                                Q_snprintf( closing, sizeof( closing ), "</%.*s",
+                                snprintf( closing, sizeof( closing ), "</%.*s",
                                         (int)(( taglen >= 6 ) ? 6 : 5 ), tag );
 
                                 close = strcasestr( end, closing );
