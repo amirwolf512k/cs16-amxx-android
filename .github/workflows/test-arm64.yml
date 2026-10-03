@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # v37: the cstrike test extracts the REAL ZP 4.3 mod from v34 history (git archive)
 
       - name: Build engine (dedicated) for host arch
         shell: bash

@@ -378,30 +378,27 @@ public class XashActivity extends SDLActivity {
                         int screenW = dm.widthPixels;
                         int screenH = dm.heightPixels;
 
-                        // v30: 1:1 copy of the ORIGINAL xash3d-fwgs /
-                        // hlsdk-portable MOTD window (CMessageWindowPanel,
-                        // 640x480 coordinate space): a 424x312 window at
-                        // (112,80) — opaque black, 1px LineBorder in
-                        // (178,119,0), server-name title top-left, scrollable
-                        // content, bottom-left OK button (160x30). XRES/YRES
-                        // scale independently exactly like the PC game does
-                        // on widescreen; phones additionally get a
-                        // guaranteed-wide panel (74%..94% of the screen).
+                        // v37: 1:1 port of the ORIGINAL CS 1.6 MOTD window
+                        // (Valve's CMessageWindowPanel, cl_dll/
+                        // vgui_MOTDWindow.cpp, 640x480 coordinate space):
+                        // a 424x312 window, 1px LineBorder in (178,119,0),
+                        // title at (16,16), scrollable text area (16,48)
+                        // sized 392x204, bottom-left OK button 160x30 (the
+                        // real #Menu_OK CommandButton).  XRES/YRES scale
+                        // independently exactly like the PC game does on
+                        // widescreen; the steam-style CS-logo title bar is
+                        // flush with the window top like the reference UI.
                         float sx = screenW / 640f;
                         float sy = screenH / 480f;
 
                         int panelW = Math.round( 424 * sx );
-                        int minW = Math.round( screenW * 0.74f );
-                        int maxW = Math.round( screenW * 0.94f );
+                        int minW = Math.round( screenW * 0.62f );
 
                         if ( panelW < minW )
                                 panelW = minW;
 
-                        if ( panelW > maxW )
-                                panelW = maxW;
-
                         int panelH = Math.round( 312 * sy );
-                        int maxH = Math.round( screenH * 0.88f );
+                        int maxH = Math.round( screenH * 0.86f );
 
                         if ( panelH > maxH )
                                 panelH = maxH;
@@ -413,10 +410,11 @@ public class XashActivity extends SDLActivity {
                         panelLp.gravity = Gravity.CENTER;
                         root.addView( panel, panelLp );
 
-                        // v35: the classic CS 1.6 VGUI title bar - a dark strip
-                        // near the window top with the orange CS soldier logo on
-                        // the left and the amber caption next to it, exactly
-                        // like the PC in-game MOTD window
+                        // v37: the classic CS 1.6 title bar — a full-width
+                        // dark strip flush with the window top (like the PC
+                        // reference UI), CS soldier logo left, amber caption
+                        // next to it.  Title text color = the VGUI "Title
+                        // Font" scheme color (255,170,0).
                         LinearLayout titleBar = new LinearLayout( this );
                         titleBar.setOrientation( LinearLayout.HORIZONTAL );
                         titleBar.setGravity( Gravity.CENTER_VERTICAL );
@@ -425,16 +423,16 @@ public class XashActivity extends SDLActivity {
                         ImageView logo = new ImageView( this );
                         logo.setImageResource( R.drawable.cs_logo );
                         logo.setScaleType( ImageView.ScaleType.FIT_CENTER );
-                        int logoSize = Math.max( dp( 20 ), Math.round( 26 * sy ));
+                        int logoSize = Math.max( dp( 18 ), Math.round( 24 * sy ));
                         LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams(
                                         logoSize, logoSize );
-                        logoLp.setMargins( dp( 6 ), 0, dp( 6 ), 0 );
+                        logoLp.setMargins( Math.round( 8 * sx ), 0, Math.round( 8 * sx ), 0 );
                         titleBar.addView( logo, logoLp );
 
                         TextView titleView = new TextView( this );
                         titleView.setText(( title != null && !title.isEmpty()) ? title : "Counter-Strike" );
                         titleView.setTextColor( MOTD_VGUI_TEXT );
-                        titleView.setTextSize( TypedValue.COMPLEX_UNIT_SP, 14 );
+                        titleView.setTextSize( TypedValue.COMPLEX_UNIT_SP, 17 );
                         titleView.setTypeface( Typeface.DEFAULT_BOLD );
                         titleView.setSingleLine( true );
                         titleView.setEllipsize( TextUtils.TruncateAt.END );
@@ -442,11 +440,11 @@ public class XashActivity extends SDLActivity {
                         titleBar.addView( titleView, new LinearLayout.LayoutParams(
                                         0, ViewGroup.LayoutParams.MATCH_PARENT, 1f ));
 
+                        // flush with the window top, full width (the title bar
+                        // is part of the frame, not a floating strip)
                         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(
                                         ViewGroup.LayoutParams.MATCH_PARENT,
-                                        Math.max( dp( 24 ), Math.round( 34 * sy )));
-                        titleLp.setMargins( Math.round( 12 * sx ), Math.round( 10 * sy ),
-                                        Math.round( 12 * sx ), 0 );
+                                        Math.max( dp( 28 ), Math.round( 36 * sy )));
                         panel.addView( titleBar, titleLp );
 
                         // --- content: the sandboxed WebView plays the role of
@@ -488,18 +486,21 @@ public class XashActivity extends SDLActivity {
 
                         LinearLayout.LayoutParams contentLp = new LinearLayout.LayoutParams(
                                         ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f );
-                        contentLp.setMargins( Math.round( 12 * sx ), Math.round( 6 * sy ),
-                                        Math.round( 12 * sx ), 0 );
+                        contentLp.setMargins( Math.round( 16 * sx ), Math.round( 8 * sy ),
+                                        Math.round( 16 * sx ), 0 );
                         panel.addView( contentWrap, contentLp );
 
-                        // --- v35: the small classic "ok" button, bottom-left,
-                        // dark body + light 1px border + light label, like the
-                        // PC screenshot ---
+                        // --- v37: the REAL OK button, 1:1 from
+                        // CMessageWindowPanel: CommandButton( "#Menu_OK",
+                        // x+16, y+height-16-30, XRES(160), YRES(30) ) — a
+                        // proper-sized button at the BOTTOM-LEFT of the
+                        // window, dark body + light 1px border + light label
+                        // (the CS VGUI command-button look)
                         Button ok = new Button( this );
-                        ok.setText( "ok" );
+                        ok.setText( "OK" );
                         ok.setAllCaps( false );
                         ok.setTextColor( 0xFFDEDEDE );
-                        ok.setTextSize( TypedValue.COMPLEX_UNIT_SP, 13 );
+                        ok.setTextSize( TypedValue.COMPLEX_UNIT_SP, 15 );
                         ok.setTypeface( Typeface.DEFAULT_BOLD );
                         ok.setBackground( makeMOTDButtonBackground());
                         ok.setStateListAnimator( null );
@@ -512,12 +513,12 @@ public class XashActivity extends SDLActivity {
                                         }
                         } );
 
-                        int okW = Math.max( dp( 64 ), Math.round( 92 * sx ));
-                        int okH = Math.max( dp( 22 ), Math.round( 24 * sy ));
+                        int okW = Math.max( dp( 96 ), Math.round( 160 * sx ));
+                        int okH = Math.max( dp( 34 ), Math.round( 30 * sy ));
 
                         LinearLayout.LayoutParams okLp = new LinearLayout.LayoutParams( okW, okH );
-                        okLp.setMargins( Math.round( 16 * sx ), Math.round( 14 * sy ),
-                                        Math.round( 16 * sx ), Math.round( 16 * sy ));
+                        okLp.setMargins( Math.round( 16 * sx ), Math.round( 10 * sy ),
+                                        Math.round( 16 * sx ), Math.round( 14 * sy ));
                         panel.addView( ok, okLp );
 
                         dialog.setContentView( root );
