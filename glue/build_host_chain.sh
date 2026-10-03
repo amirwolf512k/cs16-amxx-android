@@ -109,12 +109,19 @@ build_module csx cstrike/csx CMisc CRank meta_api rank usermsg
 build_module nvault nvault Binary Journal NVault amxxapi
 build_module sockets sockets sockets
 
-# v32: hamsandwich on the host uses the upstream generic trampoline
-# (Trampolines.h CreateGenericTrampoline) instead of the ARM libffcall
-# shim — x86_64 hooks become REAL, matching what arm64 gets via the shim
-build_module hamsandwich hamsandwich amxx_api config_parser \
-        hook_callbacks hook_native srvcmd call_funcs hook_create \
-        DataHandler pdata hook_specialbot
+# v32: hamsandwich on the host -- on x86_64 use the upstream generic
+# trampoline (Trampolines.h) so hooks are REAL; on arm64 hosts (CI) keep
+# the hand-written ARM libffcall shim (the generic emitter is x86-only)
+if [ "$BUILD" = "x86_64" ]; then
+        build_module hamsandwich hamsandwich amxx_api config_parser \
+                hook_callbacks hook_native srvcmd call_funcs hook_create \
+                DataHandler pdata hook_specialbot
+else
+        MODULE_CFLAGS="-DUSE_LIBFFCALL -I$HERE/trampoline" \
+                build_module hamsandwich hamsandwich amxx_api config_parser \
+                hook_callbacks hook_native srvcmd call_funcs hook_create \
+                DataHandler pdata hook_specialbot "$HERE/trampoline/trampoline.c"
+fi
 
 # v25: cs_ham_bots_api library-anchor module (zombie plague mods; the
 # natives live in hamsandwich + the staged cs_ham_bots_api.amxx plugin)
