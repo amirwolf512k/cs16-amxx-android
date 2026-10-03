@@ -39,7 +39,23 @@ static cell AmxCvarHandleAlloc(cvar_t *var)
 
 static cvar_t *AmxCvarHandleGet(AMX *amx, cell handle, const char *native)
 {
-        if (handle <= 0 || static_cast<size_t>(handle) > g_AmxCvarHandles.size())
+        // v36: handle 0 is no longer a plugin bug worth aborting over. On a
+        // dedicated HLDS every cvar mods reference exists (the official
+        // gamedll / stock plugins register it), so upstream could hard-error.
+        // This port's gamedll lacks many of them; get_cvar_pointer() now
+        // auto-creates missing cvars, so handle 0 here is nearly impossible --
+        // but if any code path still yields one (literal 0, uninitialized
+        // var), the pcvar natives degrade to neutral no-ops instead of
+        // throwing "run time error 10" and killing arbitrary mod functions
+        // (Zombie Plague 4.3/5.0, BaseBuilder, CSDM, user-modified plugins).
+        if (handle == 0)
+        {
+                return nullptr;
+        }
+
+        // Genuinely out-of-range garbage handles are still programming
+        // errors: keep reporting them.
+        if (handle < 0 || static_cast<size_t>(handle) > g_AmxCvarHandles.size())
         {
                 LogError(amx, AMX_ERR_NATIVE, "Invalid CVAR pointer (handle %d) used in native \"%s\"", handle, native);
                 return nullptr;
@@ -61,7 +77,15 @@ static cell AmxCvarHookHandleAlloc(AutoForward *forward)
 
 static AutoForward *AmxCvarHookHandleGet(AMX *amx, cell handle)
 {
-        if (handle <= 0 || static_cast<size_t>(handle) > g_AmxCvarHookHandles.size())
+        // v36: handle 0 = the hook was never established (e.g.
+        // hook_cvar_change on a cvar whose detour cannot attach). Degraded
+        // no-op instead of a runtime error, mirroring the pcvar handles.
+        if (handle == 0)
+        {
+                return nullptr;
+        }
+
+        if (handle < 0 || static_cast<size_t>(handle) > g_AmxCvarHookHandles.size())
         {
                 LogError(amx, AMX_ERR_NATIVE, "Invalid cvar hook handle (handle %d)", handle);
                 return nullptr;
@@ -163,6 +187,36 @@ static cell AMX_NATIVE_CALL get_cvar_pointer(AMX *amx, cell *params)
         const char *name = get_amxstring(amx, params[1], 0, len);
 
         CvarInfo* info = g_CvarManager.FindCvar(name);
+
+        if (!info)
+        {
+                // v36: a dedicated HLDS always has the cvars mods look up
+                // (bot_quota, amx_show_activity, ...) because the official
+                // gamedll and the stock plugins register them. This port's
+                // gamedll does not, so mods doing
+                //   new pcvar = get_cvar_pointer("bot_quota")
+                //   get_pcvar_num(pcvar) / set_pcvar_num(pcvar, n)
+                // used to abort with "run time error 10: Invalid CVAR
+                // pointer". Mods cannot be enumerated and shimmed one by one
+                // (ZP 4.3 != ZP 5.0 != BaseBuilder != user-modified), so the
+                // CORE now materializes the missing cvar with the neutral
+                // default "0" -- the same value HLDS defaults would expose.
+                // If the real owner registers it later (e.g. admincmd.amxx
+                // registering amx_show_activity), CreateCvar() adopts the
+                // autoCreated placeholder and CVAR_DIRECTSETs the proper
+                // default over it, so late registration still wins.
+                CPluginMngr::CPlugin *plugin = g_plugins.findPluginFast(amx);
+
+                if (plugin)
+                {
+                        info = g_CvarManager.CreateCvar(name, "0", plugin->getName(), plugin->getId(), 0);
+
+                        if (info)
+                        {
+                                info->autoCreated = true;
+                        }
+                }
+        }
 
         return AmxCvarHandleAlloc(info ? info->var : nullptr);
 }
@@ -401,7 +455,13 @@ static cell AMX_NATIVE_CALL get_pcvar_bounds(AMX *amx, cell *params)
         cvar_t *ptr = AmxCvarHandleGet(amx, params[1], "get_pcvar_bounds");
         CvarInfo* info = nullptr;
 
-        if (!ptr || !(info = g_CvarManager.FindCvar(ptr->name)))
+        // v36: null handle (missing cvar) degrades gracefully.
+        if (!ptr)
+        {
+                return 0;
+        }
+
+        if (!(info = g_CvarManager.FindCvar(ptr->name)))
         {
                 LogError(amx, AMX_ERR_NATIVE, "Invalid CVAR pointer");
                 return 0;
@@ -436,7 +496,13 @@ static cell AMX_NATIVE_CALL bind_pcvar_float(AMX *amx, cell *params)
         cvar_t *ptr = AmxCvarHandleGet(amx, params[1], "bind_pcvar_float");
         CvarInfo* info = nullptr;
 
-        if (!ptr || !(info = g_CvarManager.FindCvar(ptr->name)))
+        // v36: null handle (missing cvar) degrades gracefully.
+        if (!ptr)
+        {
+                return 0;
+        }
+
+        if (!(info = g_CvarManager.FindCvar(ptr->name)))
         {
                 LogError(amx, AMX_ERR_NATIVE, "Invalid CVAR pointer");
                 return 0;
@@ -451,7 +517,13 @@ static cell AMX_NATIVE_CALL bind_pcvar_num(AMX *amx, cell *params)
         cvar_t *ptr = AmxCvarHandleGet(amx, params[1], "bind_pcvar_num");
         CvarInfo* info = nullptr;
 
-        if (!ptr || !(info = g_CvarManager.FindCvar(ptr->name)))
+        // v36: null handle (missing cvar) degrades gracefully.
+        if (!ptr)
+        {
+                return 0;
+        }
+
+        if (!(info = g_CvarManager.FindCvar(ptr->name)))
         {
                 LogError(amx, AMX_ERR_NATIVE, "Invalid CVAR pointer");
                 return 0;
@@ -466,7 +538,13 @@ static cell AMX_NATIVE_CALL bind_pcvar_string(AMX *amx, cell *params)
         cvar_t *ptr = AmxCvarHandleGet(amx, params[1], "bind_pcvar_string");
         CvarInfo* info = nullptr;
 
-        if (!ptr || !(info = g_CvarManager.FindCvar(ptr->name)))
+        // v36: null handle (missing cvar) degrades gracefully.
+        if (!ptr)
+        {
+                return 0;
+        }
+
+        if (!(info = g_CvarManager.FindCvar(ptr->name)))
         {
                 LogError(amx, AMX_ERR_NATIVE, "Invalid CVAR pointer");
                 return 0;
@@ -545,7 +623,13 @@ static cell AMX_NATIVE_CALL set_pcvar_bounds(AMX *amx, cell *params)
         cvar_t *ptr = AmxCvarHandleGet(amx, params[1], "set_pcvar_bounds");
         CvarInfo* info = nullptr;
 
-        if (!ptr || !(info = g_CvarManager.FindCvar(ptr->name)))
+        // v36: null handle (missing cvar) degrades gracefully.
+        if (!ptr)
+        {
+                return 0;
+        }
+
+        if (!(info = g_CvarManager.FindCvar(ptr->name)))
         {
                 LogError(amx, AMX_ERR_NATIVE, "Invalid CVAR pointer");
                 return 0;

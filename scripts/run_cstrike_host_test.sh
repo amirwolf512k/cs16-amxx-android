@@ -39,10 +39,11 @@ cp "$HOST/libmm_amxmodx.so" "$C/addons/amxmodx/dlls/"
 cp "$HOST"/modules/libamxx_*.so "$C/addons/amxmodx/modules/"
 cp "$HOST/libmetamod_android_$ARCH.so" "$C/addons/metamod/dlls/libmetamod_android_amd64.so"
 
-# staged ini line 1 block = cvar_compat.amxx; diagnostics run right after it
+# v36: staged ini starts with cs_ham_bots_api.amxx (NO cvar_compat -- the
+# core auto-creates missing cvars itself); diagnostics run right after it
 cp "$ROOT/battery_test_host.amxx" "$C/addons/amxmodx/plugins/"
 cp "$ROOT/scripts/cvar_suite.amxx" "$C/addons/amxmodx/plugins/"
-sed -i '/^cvar_compat\.amxx$/a cvar_suite.amxx\nbattery_test_host.amxx' "$C/addons/amxmodx/configs/plugins.ini"
+sed -i '/^cs_ham_bots_api\.amxx$/a cvar_suite.amxx\nbattery_test_host.amxx' "$C/addons/amxmodx/configs/plugins.ini"
 
 # v32: statsx registers Ham_Spawn via hamdata.ini vtable offsets that do not
 # match the locally built ReGameDLL (device arm64 gamedll is verified fine) —
@@ -158,7 +159,9 @@ export XASH3D_FAKECLIENT_CONNECT=1
 export XASH3D_AMXX_LIBDIR="$TEST/amxxpriv"
 export XASH3D_GAMELIBDIR="$TEST/gamelibs"
 export LD_LIBRARY_PATH="$FS:$TEST:$TEST/gamelibs:$LD_LIBRARY_PATH"
-timeout -k 10 100 "$ENGINE/build/engine/xash" \
+# v36: engine window 100s -> 300s -- slow sandboxes spend ~40s on startup and
+# the fake-client connect chain needs the rest before the ham probe fires
+timeout -k 10 300 "$ENGINE/build/engine/xash" \
         -game cstrike -dev 2 -log -condebug \
         -dll "$TEST/gamelibs/libserver_hardfp.so" \
         +map amxx_test +hostname "host-test" +sv_lan 1 \
@@ -190,12 +193,17 @@ else
         grep -aq "\[HAM\] hooked player::spawn" console.txt || { PASS=0; FAIL="$FAIL ham-spawn-not-hooked"; }
 fi
 grep -aq "Crash: signal\|SIGSEGV\|Segmentation" console.txt && { PASS=0; FAIL="$FAIL CRASH"; }
-# v35: the cvar suite deliberately triggers one runtime error (null-handle
-# probe); any OTHER runtime error still fails the run
-grep -a "Run time error" console.txt | grep -avq "Invalid CVAR pointer (handle 0) used in native \"get_pcvar_num\"" && { PASS=0; FAIL="$FAIL amxx-runtime-error"; }
-# v35: cvar compat + full cvar surface gate
-grep -aq "CVAR] 3 compat ptrs: bot_quota=[1-9]" console.txt || { PASS=0; FAIL="$FAIL cvar-compat-broken"; }
-grep -aq "CVAR] 5 string: 'hello'" console.txt   || { PASS=0; FAIL="$FAIL cvar-string-fail"; }
+# v36: null-handle pcvar calls are silent no-ops now -- ANY runtime error is
+# a hard failure (v35 had to whitelist the deliberate null-handle probe)
+grep -aq "Run time error" console.txt && { PASS=0; FAIL="$FAIL amxx-runtime-error"; }
+# v36: core auto-create + shared-handle + owner-late-registration gates
+# (no cvar_compat anywhere -- the CORE materializes missing cvars)
+grep -aq "CVAR] 3 auto bot_quota ptr=[1-9]" console.txt || { PASS=0; FAIL="$FAIL cvar-auto-create-fail"; }
+grep -aq "CVAR] 3 auto bot_quota val=0" console.txt        || { PASS=0; FAIL="$FAIL cvar-auto-default-fail"; }
+grep -aq "CVAR] 3 shared set=5 read=5" console.txt         || { PASS=0; FAIL="$FAIL cvar-shared-handle-fail"; }
+grep -aq "CVAR] 8 null-handle semantics OK" console.txt    || { PASS=0; FAIL="$FAIL cvar-null-semantics-fail"; }
+grep -aq "CVAR] 9 late amx_show_activity val=2" console.txt || { PASS=0; FAIL="$FAIL cvar-owner-late-register-fail"; }
+grep -aq "CVAR] 5 string: 'hello'" console.txt             || { PASS=0; FAIL="$FAIL cvar-string-fail"; }
 # informational: cvar-change HOOKS (hook_cvar_change) need the Cvar_DirectSet
 # memory signature which the Xash engine gamedata does not provide (ZP does
 # not use them); the rest of the cvar surface IS gated above.

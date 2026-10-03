@@ -81,11 +81,13 @@ jobs:
         run: bash scripts/run_host_test.sh
 
       # v35: the FULL cstrike chain on arm64 -- engine -> metamod -> AMXX ->
-      # real ReGameDLL gamedll, every staged plugin (cvar_compat first!) +
-      # battery_test + cvar_suite. Hard gates: no crashes, cvar surface OK
-      # (bot_quota/amx_show_activity compat pointers non-zero), no unexpected
-      # runtime errors. ham-probe gates are informational here (hamdata.ini
-      # never matches the locally built ReGameDLL; device gamedll verified).
+      # real ReGameDLL gamedll, every staged plugin + battery_test + cvar_suite.
+      # v36: NO compat plugin any more -- the AMXX CORE auto-creates missing
+      # cvars (bot_quota etc.) and null pcvar handles are silent no-ops. Gates:
+      # core auto-create + shared-handle + owner-late-registration semantics,
+      # no runtime errors, no crashes. ham-probe gates are informational here
+      # (hamdata.ini never matches the locally built ReGameDLL; device gamedll
+      # verified).
       - name: Run full cstrike gamedll test (battery + cvar suite)
         shell: bash
         env:
@@ -148,9 +150,9 @@ jobs:
           else
             RES="$(printf '%s\n%s' "$RES" "❌ تست اتصال کلاینت arm64 ($ARCH) شکست — لاگ‌ها در آرتیفکت‌های اکشن")"
           fi
-          # v35: full cstrike chain (real ReGameDLL + battery + cvar suite)
-          if [ -f out/cs-host-test/console.txt ] && grep -q "CVAR] 3 compat ptrs: bot_quota=[1-9]" out/cs-host-test/console.txt && ! grep -qE "Crash: signal|SIGSEGV|Segmentation" out/cs-host-test/console.txt; then
-            RES="$(printf '%s\n%s' "$RES" "✅ تست کامل cstrike روی arm64 موفق — gamedll واقعی + cvar_compat (bot_quota/amx_show_activity) + کل API cvar سالم")"
+          # v36: full cstrike chain gate = core auto-create + no crashes
+          if [ -f out/cs-host-test/console.txt ] && grep -q "CVAR] 3 auto bot_quota ptr=[1-9]" out/cs-host-test/console.txt && grep -q "CVAR] 8 null-handle semantics OK" out/cs-host-test/console.txt && ! grep -qE "Crash: signal|SIGSEGV|Segmentation" out/cs-host-test/console.txt; then
+            RES="$(printf '%s\n%s' "$RES" "✅ تست کامل cstrike روی arm64 موفق — هسته AMXX خودش cvarهای گم‌شده را می‌سازد (بدون پلاگین سازگاری) + کل API cvar سالم")"
           else
             RES="$(printf '%s\n%s' "$RES" "❌ تست کامل cstrike arm64 شکست — out/cs-host-test/console.txt را ببین")"
           fi
