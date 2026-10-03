@@ -1602,8 +1602,12 @@ C_DLLEXPORT     int     Meta_Query(const char   *ifvers, plugin_info_t **pPlugIn
         // unmapped memory (SIGSEGV on the first string arg -- seen as the
         // "zp_register_zombie_class" crash on the x86_64 host chain).
         // Raising the mmap threshold keeps the (few-MB) plugin heaps in
-        // brk, tens of MB apart at worst.
+        // brk, tens of MB apart at worst. glibc-only: bionic (Android)
+        // has no M_MMAP_THRESHOLD and serves everything from overlapping
+        // arenas anyway (verified on device).
+#if defined(__linux__) && !defined(__ANDROID__)
         mallopt(M_MMAP_THRESHOLD, 256 * 1024 * 1024);
+#endif
 
         gpMetaUtilFuncs = pMetaUtilFuncs;
         *pPlugInfo = &Plugin_info;
