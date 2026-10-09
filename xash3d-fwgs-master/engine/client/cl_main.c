@@ -16,6 +16,7 @@ GNU General Public License for more details.
 #include <inttypes.h>
 #include "common.h"
 #include "client.h"
+#include "platform/platform.h"
 #include "net_encode.h"
 #include "cl_tent.h"
 #include "input.h"
@@ -98,6 +99,7 @@ static CVAR_DEFINE_AUTO( bottomcolor, "0", FCVAR_USERINFO|FCVAR_ARCHIVE|FCVAR_FI
 CVAR_DEFINE_AUTO( rate, "25000", FCVAR_USERINFO|FCVAR_ARCHIVE|FCVAR_FILTERABLE, "player network rate" );
 
 CVAR_DEFINE_AUTO( cl_ticket_generator, "revemu2013", FCVAR_ARCHIVE|FCVAR_PRIVILEGED, "you wouldn't steal a car" );
+CVAR_DEFINE_AUTO( cl_steamid, "", FCVAR_ARCHIVE|FCVAR_PRIVILEGED, "steady SteamID for goldsrc servers, accepted forms: STEAM_0:X:Y, [U:1:Z], steamid64 or plain account number" );
 static CVAR_DEFINE_AUTO( cl_log_outofband, "0", FCVAR_ARCHIVE, "log out of band messages, can be useful for server admins and for engine debugging" );
 static CVAR_DEFINE_AUTO( cl_autorecord, "0", 0, "automatically start recording a demo after joining the server" );
 
@@ -1190,11 +1192,58 @@ static void CL_GetCDKey( char *protinfo, size_t protinfosize )
 	Info_SetValueForKey( protinfo, "cdkey", key, protinfosize );
 }
 
+// turns "STEAM_0:X:Y", "[U:1:Z]", a steamid64 or a bare account
+// number into the 32-bit account part servers build STEAM_0:X:Y from
+static qboolean CL_ParseSteamIDAccount( const char *s, uint32_t *account )
+{
+	uint64_t v;
+	int x, y;
+
+	if( COM_StringEmpty( s ))
+		return false;
+
+	if( !Q_strnicmp( s, "STEAM_", 6 ))
+	{
+		if( sscanf( s + 6, ":%d:%d", &x, &y ) != 2 || ( x != 0 && x != 1 ) || y < 0 )
+			return false;
+		*account = ( uint32_t )y * 2 + x;
+		return true;
+	}
+
+	if( s[0] == '[' )
+	{
+		unsigned int u;
+
+		if( sscanf( s, "[U:1:%u]", &u ) != 1 )
+			return false;
+		*account = u;
+		return true;
+	}
+
+	// plain digits only from here on, anything else is a typo
+	if( !Q_isdigit( s ))
+		return false;
+
+	v = strtoull( s, NULL, 10 );
+
+	// a steamid64 sits in the account universe, strip the base to get
+	// the account number the old STEAM_0:X:Y spelling shows
+	if( v > 76561197960265728ULL )
+		v -= 76561197960265728ULL;
+
+	if( v == 0 || v > 0xFFFFFFFFULL )
+		return false;
+
+	*account = ( uint32_t )v;
+	return true;
+}
+
 static void CL_WriteSteamTicket( sizebuf_t *send )
 {
 	string key;
 	netadr_t adr = { .type = NA_LOOPBACK, }; // goldsrc servers don't get unique key as xashid isn't sent raw to them
 	uint32_t crc;
+	uint32_t account;
 	char buf[768] = { 0 }; // setti and steamemu return 768
 	int i = sizeof( buf );
 
@@ -1208,7 +1257,26 @@ static void CL_WriteSteamTicket( sizebuf_t *send )
 	CRC32_Init( &crc );
 	CRC32_ProcessBuffer( &crc, key, Q_strlen( key ));
 	crc = CRC32_Final( crc );
-	i = GenerateRevEmu2013( buf, key, crc );
+
+	// cl_steamid pins the account number so the player shows up with
+	// the same STEAM_0:X:Y everywhere, which is what rank/ban lists and
+	// steam avatar lookups are keyed on
+	if( CL_ParseSteamIDAccount( cl_steamid.string, &account ))
+	{
+		i = GenerateRevEmu2013( buf, key, ( int )account );
+
+		// the spoofing search can fail on rare ids, then the derived
+		// id is better than an empty ticket
+		if( i <= 0 )
+		{
+			Con_Printf( S_WARN "cl_steamid %s could not be built into a ticket, using the derived id\n", cl_steamid.string );
+			i = GenerateRevEmu2013( buf, key, crc );
+		}
+	}
+	else
+	{
+		i = GenerateRevEmu2013( buf, key, crc );
+	}
 	MSG_WriteBytes( send, buf, i );
 
 	// RevEmu2013: pTicket[1] = revHash (low), pTicket[5] = 0x01100001 (high)
@@ -3709,6 +3777,7 @@ static void CL_InitLocal( void )
 	cl.resourcesonhand.pNext = cl.resourcesonhand.pPrev = &cl.resourcesonhand;
 
 	Cvar_RegisterVariable( &cl_ticket_generator );
+	Cvar_RegisterVariable( &cl_steamid );
 	Cvar_RegisterVariable( &cl_log_outofband );
 	Cvar_RegisterVariable( &cl_autorecord );
 
@@ -3908,6 +3977,13 @@ void Host_ClientBegin( void )
 {
 	// exec console commands
 	Cbuf_Execute ();
+
+#if XASH_ANDROID
+	// the loading window's Cancel button answers from the UI thread;
+	// here is where running "disconnect" is safe
+	if( Android_LoadingCancelled( ))
+		Cbuf_AddText( "disconnect\n" );
+#endif
 
 	// if client is not active, do nothing
 	if( !cls.initialized ) return;

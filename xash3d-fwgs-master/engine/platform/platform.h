@@ -105,6 +105,11 @@ void Android_Shutdown( void );
 qboolean Android_ShowMOTD( const char *title, const char *html ); // title = server name; returns false when the dialog could not be shown
 qboolean Android_IsMOTDDialogOpen( void ); // true while the MOTD dialog is on screen
 void Android_MOTDDialogClosed( void ); // called from Java when the dialog is dismissed
+void Android_LoadingShow( const char *serveraddr ); // CS 1.6 style loading window
+void Android_LoadingStatus( const char *text, float percent ); // percent < 0 means busy
+void Android_LoadingBanner( const char *url ); // server ad image for the window footer
+void Android_LoadingHide( void );
+qboolean Android_LoadingCancelled( void ); // true once after the window Cancel was pressed
 #endif
 
 #if XASH_WIN32

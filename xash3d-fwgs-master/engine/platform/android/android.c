@@ -35,11 +35,146 @@ struct jnimethods_s
         jmethodID getAndroidID;
         jmethodID saveAndroidID;
         jmethodID showMOTD; // sandboxed HTML MOTD dialog
+        jmethodID loadingShow; // CS 1.6 style loading window
+        jmethodID loadingStatus;
+        jmethodID loadingBanner;
+        jmethodID loadingHide;
 } jni;
 
 // dialog visibility state so the client dll can
 // hold back the team select menu until the user presses OK (like PC CS).
 static qboolean g_motd_dialog_open = false;
+
+// set from the UI thread when the player presses Cancel on the loading
+// window; the engine picks it up on its own thread and disconnects
+static qboolean g_loading_cancelled = false;
+
+// server MOTD pages carry the server's ad image; ascii-only guard so a
+// crafted payload can never abort NewStringUTF on the engine thread
+static qboolean LoadingURLIsSafe( const char *url )
+{
+        const char *p;
+
+        if( COM_StringEmpty( url ))
+                return false;
+
+        for( p = url; *p; p++ )
+        {
+                if(( unsigned char )*p <= 0x20 || ( unsigned char )*p > 0x7E )
+                        return false;
+        }
+
+        return true;
+}
+
+/*
+========================
+Android_LoadingShow
+
+raise the CS 1.6 style loading window (olive VGUI panel,
+segmented progress bar, Cancel). serveraddr keys the saved
+server banner so reconnects show it right away.
+========================
+*/
+void Android_LoadingShow( const char *serveraddr )
+{
+        jstring jstr;
+
+        if( !jni.env || !jni.activity || !jni.loadingShow )
+                return;
+
+        jstr = (*jni.env)->NewStringUTF( jni.env, COM_StringEmpty( serveraddr ) ? "" : serveraddr );
+
+        if( !jstr )
+                return;
+
+        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.loadingShow, jstr );
+        (*jni.env)->DeleteLocalRef( jni.env, jstr );
+
+        if( (*jni.env)->ExceptionCheck( jni.env ))
+                (*jni.env)->ExceptionClear( jni.env );
+}
+
+/*
+========================
+Android_LoadingStatus
+
+progress line + segmented bar fill; percent < 0 draws the bar idle.
+========================
+*/
+void Android_LoadingStatus( const char *text, float percent )
+{
+        jstring jstr;
+
+        if( !jni.env || !jni.activity || !jni.loadingStatus || COM_StringEmpty( text ))
+                return;
+
+        jstr = (*jni.env)->NewStringUTF( jni.env, text );
+
+        if( !jstr )
+                return;
+
+        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.loadingStatus, jstr, percent );
+        (*jni.env)->DeleteLocalRef( jni.env, jstr );
+
+        if( (*jni.env)->ExceptionCheck( jni.env ))
+                (*jni.env)->ExceptionClear( jni.env );
+}
+
+/*
+========================
+Android_LoadingBanner
+
+hand the server ad image url to the loading window.
+========================
+*/
+void Android_LoadingBanner( const char *url )
+{
+        jstring jstr;
+
+        if( !jni.env || !jni.activity || !jni.loadingBanner )
+                return;
+
+        if( !LoadingURLIsSafe( url ))
+                return;
+
+        jstr = (*jni.env)->NewStringUTF( jni.env, url );
+
+        if( !jstr )
+                return;
+
+        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.loadingBanner, jstr );
+        (*jni.env)->DeleteLocalRef( jni.env, jstr );
+
+        if( (*jni.env)->ExceptionCheck( jni.env ))
+                (*jni.env)->ExceptionClear( jni.env );
+}
+
+/*
+========================
+Android_LoadingHide
+
+window goes away, the game is about to take the screen.
+========================
+*/
+void Android_LoadingHide( void )
+{
+        if( !jni.env || !jni.activity || !jni.loadingHide )
+                return;
+
+        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.loadingHide );
+
+        if( (*jni.env)->ExceptionCheck( jni.env ))
+                (*jni.env)->ExceptionClear( jni.env );
+}
+
+qboolean Android_LoadingCancelled( void )
+{
+        qboolean cancelled = g_loading_cancelled;
+
+        g_loading_cancelled = false;
+        return cancelled;
+}
 
 void Android_Init( void )
 {
@@ -55,6 +190,10 @@ void Android_Init( void )
         // (title, html) both as raw byte arrays, so a malformed
         // server string can never abort NewStringUTF
         jni.showMOTD = (*jni.env)->GetMethodID( jni.env, jni.actcls, "showMOTD", "([B[B)Z" );
+        jni.loadingShow = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingShow", "(Ljava/lang/String;)V" );
+        jni.loadingStatus = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingStatus", "(Ljava/lang/String;F)V" );
+        jni.loadingBanner = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingBanner", "(Ljava/lang/String;)V" );
+        jni.loadingHide = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingHide", "()V" );
         // a failed lookup leaves a pending exception; clear it so
         // nothing downstream (filesystem assets, SDL) trips over it
         if( (*jni.env)->ExceptionCheck( jni.env ))
@@ -212,6 +351,15 @@ JNIEXPORT void JNICALL Java_su_xash_engine_XashActivity_nativeMOTDClosed( JNIEnv
         (void)env;
         (void)clazz;
         Android_MOTDDialogClosed();
+}
+
+// Cancel button on the loading window (UI thread). Static native
+// resolved by symbol lookup, like nativeMOTDClosed.
+JNIEXPORT void JNICALL Java_su_xash_engine_XashActivity_nativeLoadingCancelled( JNIEnv *env, jclass clazz )
+{
+        (void)env;
+        (void)clazz;
+        g_loading_cancelled = true;
 }
 
 /*

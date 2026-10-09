@@ -2,10 +2,15 @@ package su.xash.engine;
 
 import android.annotation.SuppressLint;
 import android.app.Dialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.res.AssetManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
@@ -873,5 +878,345 @@ public class XashActivity extends SDLActivity {
 
         private int dp( int v ) {
                 return Math.round( v * getResources().getDisplayMetrics().density );
+        }
+
+        // ------------------------------------------------------------------
+        // CS 1.6 style loading window
+        //
+        // the engine raises it through the loading plaque (connect,
+        // changelevel) and drives the status line and the segmented
+        // progress bar from the resource downloader. The footer shows the
+        // server's banner image when its connect page carries one. Cancel
+        // asks the engine to disconnect.
+        // ------------------------------------------------------------------
+
+        // matched to the classic GoldSrc VGUI2 "Loading..." window:
+        // olive panel, light frame, yellow segments on a dark track
+        private static final int LOADING_SHADE = 0xB2000000;
+        private static final int LOADING_PANEL_BG = 0xFF3E4637;
+        private static final int LOADING_PANEL_BORDER = 0xFF9AA391;
+        private static final int LOADING_TITLE = 0xFFE6EBDD;
+        private static final int LOADING_TEXT = 0xFFC9CFC0;
+        private static final int LOADING_BAR_TRACK = 0xFF2C3227;
+        private static final int LOADING_BAR_BORDER = 0xFF8C9484;
+        private static final int LOADING_BAR_FILL = 0xFFDDBE43;
+
+        private FrameLayout mLoadingOverlay;
+        private LoadingBar mLoadingBar;
+        private TextView mLoadingStatus;
+        private ImageView mLoadingBanner;
+        private String mLoadingServer = "";
+
+        /** The segmented yellow progress bar of the classic loading
+         *  window: small blocks filling left to right. percent < 0
+         *  means "busy, nothing measured yet" and draws it empty. */
+        private static class LoadingBar extends View {
+                private float mPercent = -1f;
+
+                LoadingBar( Context c ) { super( c ); }
+
+                void setPercent( float p ) {
+                        if( mPercent == p ) return;
+                        mPercent = p;
+                        invalidate();
+                }
+
+                @Override
+                protected void onDraw( Canvas canvas ) {
+                        float w = getWidth(), h = getHeight();
+                        Paint p = new Paint();
+
+                        p.setColor( LOADING_BAR_TRACK );
+                        canvas.drawRect( 0, 0, w, h, p );
+
+                        final int segments = 18;
+                        float gap = Math.max( 2, w * 0.012f );
+                        float segW = ( w - gap * ( segments + 1 )) / segments;
+                        float insetY = Math.max( 2, h * 0.16f );
+
+                        int filled = 0;
+                        if( mPercent >= 0 )
+                                filled = Math.round( segments * Math.max( 0f, Math.min( 1f, mPercent / 100f )));
+
+                        p.setColor( LOADING_BAR_FILL );
+                        for( int i = 0; i < filled; i++ ) {
+                                float x = gap + i * ( segW + gap );
+                                canvas.drawRect( x, insetY, x + segW, h - insetY, p );
+                        }
+
+                        p.setColor( LOADING_BAR_BORDER );
+                        p.setStrokeWidth( Math.max( 1, dp( 1 )));
+                        p.setStyle( Paint.Style.STROKE );
+                        canvas.drawRect( 0, 0, w, h, p );
+                }
+        }
+
+        public void loadingShow( final String serverAddr ) {
+                runOnUiThread( new Runnable() {
+                        @Override public void run() {
+                                try {
+                                        showLoadingOnUiThread( serverAddr );
+                                } catch( Throwable t ) {
+                                        Log.w( TAG, "loadingShow failed", t );
+                                }
+                        }
+                });
+        }
+
+        public void loadingStatus( final String text, final float percent ) {
+                runOnUiThread( new Runnable() {
+                        @Override public void run() {
+                                if( mLoadingOverlay == null ) return;
+                                try {
+                                        if( mLoadingStatus != null && text != null &&
+                                                !text.contentEquals( mLoadingStatus.getText() ))
+                                                mLoadingStatus.setText( text );
+                                        if( mLoadingBar != null )
+                                                mLoadingBar.setPercent( percent );
+                                } catch( Throwable t ) {
+                                        Log.w( TAG, "loadingStatus failed", t );
+                                }
+                        }
+                });
+        }
+
+        /** Server banner url from the connect page (extracted by the
+         *  engine). Remembered per server so the next connect shows it
+         *  from the first frame; shown immediately when the window is
+         *  already up. */
+        public void loadingBanner( final String url ) {
+                runOnUiThread( new Runnable() {
+                        @Override public void run() {
+                                try {
+                                        if( url == null || url.isEmpty()) return;
+                                        if( !mLoadingServer.isEmpty() )
+                                                getSharedPreferences( "loading_banners", MODE_PRIVATE )
+                                                        .edit().putString( mLoadingServer, url ).apply();
+                                        if( mLoadingOverlay != null )
+                                                loadLoadingBanner( url, false );
+                                } catch( Throwable t ) {
+                                        Log.w( TAG, "loadingBanner failed", t );
+                                }
+                        }
+                });
+        }
+
+        public void loadingHide() {
+                runOnUiThread( new Runnable() {
+                        @Override public void run() {
+                                hideLoadingOverlay();
+                        }
+                });
+        }
+
+        private static native void nativeLoadingCancelled();
+
+        private Drawable makeLoadingPanelBackground() {
+                GradientDrawable d = new GradientDrawable();
+                d.setColor( LOADING_PANEL_BG );
+                d.setStroke( Math.max( 1, dp( 1 )), LOADING_PANEL_BORDER );
+                return d;
+        }
+
+        private Drawable makeLoadingButtonBackground() {
+                GradientDrawable normal = new GradientDrawable();
+                normal.setColor( 0xFF4A5240 );
+                normal.setStroke( Math.max( 1, dp( 1 )), 0xFFB4B8BC );
+
+                GradientDrawable pressed = new GradientDrawable();
+                pressed.setColor( 0xFF2C3227 );
+                pressed.setStroke( Math.max( 1, dp( 1 )), LOADING_TITLE );
+
+                StateListDrawable sld = new StateListDrawable();
+                sld.addState( new int[] { android.R.attr.state_pressed }, pressed );
+                sld.addState( new int[] { -android.R.attr.state_pressed }, normal );
+                return sld;
+        }
+
+        private void showLoadingOnUiThread( String serverAddr ) {
+                if( mLoadingOverlay != null )
+                        hideLoadingOverlay();
+
+                mLoadingServer = serverAddr != null ? serverAddr : "";
+
+                DisplayMetrics dm = getResources().getDisplayMetrics();
+                int screenW = dm.widthPixels;
+
+                FrameLayout overlay = new FrameLayout( this );
+                overlay.setBackgroundColor( LOADING_SHADE );
+
+                LinearLayout panel = new LinearLayout( this );
+                panel.setOrientation( LinearLayout.VERTICAL );
+                panel.setBackground( makeLoadingPanelBackground() );
+                int pad = dp( 14 );
+                panel.setPadding( pad, pad, pad, pad );
+
+                FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
+                        Math.round( screenW * 0.78f ), ViewGroup.LayoutParams.WRAP_CONTENT );
+                panelLp.gravity = Gravity.CENTER;
+                overlay.addView( panel, panelLp );
+
+                // title row: the CS mark + Loading...
+                LinearLayout titleRow = new LinearLayout( this );
+                titleRow.setGravity( Gravity.CENTER_VERTICAL );
+
+                ImageView logo = new ImageView( this );
+                logo.setImageResource( R.drawable.cs_logo );
+                logo.setScaleType( ImageView.ScaleType.FIT_CENTER );
+                int logoSize = dp( 18 );
+                LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams( logoSize, logoSize );
+                logoLp.rightMargin = dp( 8 );
+                titleRow.addView( logo, logoLp );
+
+                TextView title = new TextView( this );
+                title.setText( "Loading..." );
+                title.setTextColor( LOADING_TITLE );
+                title.setTextSize( TypedValue.COMPLEX_UNIT_SP, 17 );
+                title.setTypeface( Typeface.DEFAULT_BOLD );
+                titleRow.addView( title, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
+
+                panel.addView( titleRow, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
+
+                LoadingBar bar = new LoadingBar( this );
+                LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp( 18 ));
+                barLp.topMargin = dp( 12 );
+                panel.addView( bar, barLp );
+                mLoadingBar = bar;
+
+                TextView status = new TextView( this );
+                status.setText( mLoadingServer.isEmpty() ? "Loading..."
+                        : "Connecting to " + mLoadingServer + "..." );
+                status.setTextColor( LOADING_TEXT );
+                status.setTextSize( TypedValue.COMPLEX_UNIT_SP, 13 );
+                status.setSingleLine( false );
+                LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                statusLp.topMargin = dp( 8 );
+                panel.addView( status, statusLp );
+                mLoadingStatus = status;
+
+                ImageView banner = new ImageView( this );
+                banner.setScaleType( ImageView.ScaleType.FIT_CENTER );
+                banner.setAdjustViewBounds( true );
+                banner.setVisibility( View.GONE );
+                LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                bannerLp.topMargin = dp( 10 );
+                panel.addView( banner, bannerLp );
+                mLoadingBanner = banner;
+
+                LinearLayout cancelRow = new LinearLayout( this );
+                cancelRow.setGravity( Gravity.END );
+
+                Button cancel = new Button( this );
+                cancel.setText( "Cancel" );
+                cancel.setAllCaps( false );
+                cancel.setTextColor( LOADING_TITLE );
+                cancel.setTextSize( TypedValue.COMPLEX_UNIT_SP, 14 );
+                cancel.setBackground( makeLoadingButtonBackground() );
+                cancel.setStateListAnimator( null );
+                cancel.setElevation( 0f );
+                cancel.setMinHeight( 0 );
+                cancel.setPadding( dp( 12 ), 0, dp( 12 ), 0 );
+                cancel.setOnClickListener( new View.OnClickListener() {
+                        @Override public void onClick( View v ) {
+                                hideLoadingOverlay();
+                                nativeLoadingCancelled();
+                        }
+                });
+                cancelRow.addView( cancel, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, dp( 32 )));
+
+                LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                cancelLp.topMargin = dp( 12 );
+                panel.addView( cancelRow, cancelLp );
+
+                mLoadingOverlay = overlay;
+                addContentView( overlay, new ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT ));
+
+                // reconnecting to a server we know: banner goes up at once
+                String saved = getSharedPreferences( "loading_banners", MODE_PRIVATE )
+                        .getString( mLoadingServer, null );
+                if( saved != null && !saved.isEmpty() )
+                        loadLoadingBanner( saved, false );
+        }
+
+        private void hideLoadingOverlay() {
+                if( mLoadingOverlay == null ) return;
+
+                FrameLayout overlay = mLoadingOverlay;
+                mLoadingOverlay = null;
+                mLoadingBar = null;
+                mLoadingStatus = null;
+                mLoadingBanner = null;
+
+                try {
+                        ViewGroup parent = ( ViewGroup )overlay.getParent();
+                        if( parent != null ) parent.removeView( overlay );
+                } catch( Throwable t ) {
+                        Log.w( TAG, "loading overlay remove failed", t );
+                }
+        }
+
+        /** Downloads the server banner off the UI thread and decodes it
+         *  downsampled; the footer keeps its aspect and stays hidden
+         *  until a bitmap is actually ready. */
+        private void loadLoadingBanner( final String url, final boolean remember ) {
+                if( url == null || url.isEmpty()) return;
+
+                Thread t = new Thread( new Runnable() {
+                        @Override public void run() {
+                                try {
+                                        java.net.HttpURLConnection c = ( java.net.HttpURLConnection )
+                                                new java.net.URL( url ).openConnection();
+                                        c.setConnectTimeout( 8000 );
+                                        c.setReadTimeout( 8000 );
+                                        c.setInstanceFollowRedirects( true );
+                                        java.io.InputStream in = c.getInputStream();
+                                        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+                                        byte[] chunk = new byte[16384];
+                                        int n;
+                                        while(( n = in.read( chunk )) > 0 ) {
+                                                buf.write( chunk, 0, n );
+                                                if( buf.size() > 4 * 1024 * 1024 ) break; // banner cap
+                                        }
+                                        in.close();
+
+                                        byte[] data = buf.toByteArray();
+                                        BitmapFactory.Options bounds = new BitmapFactory.Options();
+                                        bounds.inJustDecodeBounds = true;
+                                        BitmapFactory.decodeByteArray( data, 0, data.length, bounds );
+
+                                        BitmapFactory.Options opts = new BitmapFactory.Options();
+                                        opts.inSampleSize = 1;
+                                        while( bounds.outWidth / ( opts.inSampleSize * 2 ) >= 640 )
+                                                opts.inSampleSize *= 2;
+
+                                        final Bitmap bmp = BitmapFactory.decodeByteArray( data, 0, data.length, opts );
+                                        if( bmp == null ) return;
+
+                                        runOnUiThread( new Runnable() {
+                                                @Override public void run() {
+                                                        if( mLoadingOverlay == null || mLoadingBanner == null ) return;
+                                                        mLoadingBanner.setImageBitmap( bmp );
+                                                        mLoadingBanner.setVisibility( View.VISIBLE );
+                                                }
+                                        });
+
+                                        if( remember && !mLoadingServer.isEmpty() )
+                                                getSharedPreferences( "loading_banners", MODE_PRIVATE )
+                                                        .edit().putString( mLoadingServer, url ).apply();
+                                } catch( Throwable t ) {
+                                        Log.w( TAG, "loading banner download failed: " + url, t );
+                                }
+                        }
+                });
+                t.setDaemon( true );
+                t.start();
         }
 }

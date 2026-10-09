@@ -3756,6 +3756,85 @@ static IVoiceTweak gVoiceApi =
 
 /*
 =============
+MOTD_NotifyServerBanner
+
+servers greet players with a page carrying their banner image
+(ads, clan art, ip lines). Hand the first http(s) image url to
+the Android loading window: its footer shows it right away when
+the page arrives early, and remembers it for the server so the
+next connect already has it up, like the PC loading dialog.
+=============
+*/
+static void MOTD_NotifyServerBanner( const char *text )
+{
+	static const char *exts[] = { ".png", ".jpg", ".jpeg", ".gif", ".bmp" };
+	static char url[1024];
+	char lower[1024];
+	const char *p = text;
+	size_t i, j;
+	int e;
+	qboolean isimg;
+
+	while( *p )
+	{
+		const char *h1 = strstr( p, "http://" );
+		const char *h2 = strstr( p, "https://" );
+		const char *hit;
+
+		if( !h1 )
+			hit = h2;
+		else if( !h2 )
+			hit = h1;
+		else
+			hit = ( h1 < h2 ) ? h1 : h2;
+
+		if( !hit )
+			return;
+
+		for( i = 0; hit[i] && i < sizeof( url ) - 1; i++ )
+		{
+			unsigned char c = ( unsigned char )hit[i];
+
+			if( c <= 0x20 || c == '"' || c == '\'' || c == '<' || c == '>' || c == ')' )
+				break;
+
+			url[i] = c;
+		}
+		url[i] = 0;
+
+		if( i > 4 )
+		{
+			for( j = 0; j < i; j++ )
+			{
+				unsigned char c = ( unsigned char )url[j];
+
+				lower[j] = ( c >= 'A' && c <= 'Z' ) ? ( char )( c + 32 ) : ( char )c;
+			}
+			lower[i] = 0;
+
+			isimg = false;
+			for( e = 0; e < ( int )( sizeof( exts ) / sizeof( exts[0] )); e++ )
+			{
+				if( strstr( lower, exts[e] ))
+				{
+					isimg = true;
+					break;
+				}
+			}
+
+			if( isimg )
+			{
+				Android_LoadingBanner( url );
+				return;
+			}
+		}
+
+		p = hit + 1;
+	}
+}
+
+/*
+=============
 pfnShowMOTD
 
 the client dll accumulated an HTML "MOTD" user
@@ -3769,6 +3848,11 @@ static int GAME_EXPORT pfnShowMOTD( const char *title, const char *html )
 {
 	if( COM_StringEmptyOrNULL( html ))
 		return true;
+
+#if XASH_ANDROID
+	// the connect page's banner image feeds the loading window footer
+	MOTD_NotifyServerBanner( html );
+#endif
 
 #if XASH_ANDROID
 	// the window title is the SERVER NAME the client dll snapped

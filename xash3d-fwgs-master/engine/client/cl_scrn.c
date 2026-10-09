@@ -15,6 +15,7 @@ GNU General Public License for more details.
 
 #include "common.h"
 #include "client.h"
+#include "platform/platform.h"
 #include "vgui_draw.h"
 #include "qfont.h"
 #include "input.h"
@@ -509,6 +510,13 @@ void SCR_BeginLoadingPlaque( qboolean is_background )
 	if( cls.key_dest == key_console )
 		return;
 
+#if XASH_ANDROID
+	// the wait moves into the CS 1.6 style platform window (progress
+	// bar, server banner). Background map loads stay engine-drawn.
+	if( !is_background )
+		Android_LoadingShow( cls.servername );
+#endif
+
 	if( is_background ) IN_MouseSavePos( );
 	cls.draw_changelevel = !is_background;
 	SCR_UpdateScreen();
@@ -528,6 +536,10 @@ SCR_EndLoadingPlaque
 */
 void SCR_EndLoadingPlaque( void )
 {
+#if XASH_ANDROID
+	Android_LoadingHide();
+#endif
+
 	cls.disable_screen = 0.0f;
 	Con_ClearNotify();
 //	SNDDMA_UnlockSound();

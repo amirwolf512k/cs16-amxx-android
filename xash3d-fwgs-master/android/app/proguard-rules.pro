@@ -34,6 +34,12 @@
     # Android_ShowMOTD log "showMOTD=0x0" and fall back to plain HUD text
     # (no dialog window, no OK button) exactly on release APKs.
     boolean showMOTD(byte[], byte[]);
+    # the CS 1.6 style loading window is driven from the engine through
+    # JNI only -- without keep rules R8 strips these on release builds
+    void loadingShow(java.lang.String);
+    void loadingStatus(java.lang.String, float);
+    void loadingBanner(java.lang.String);
+    void loadingHide();
     void nativeMOTDClosed();
 }
 

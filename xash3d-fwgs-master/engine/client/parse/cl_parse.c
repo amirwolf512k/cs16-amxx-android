@@ -15,6 +15,7 @@ GNU General Public License for more details.
 
 #include "common.h"
 #include "client.h"
+#include "platform/platform.h"
 #include "mod_local.h"
 #include "net_encode.h"
 #include "cl_tent.h"
@@ -523,6 +524,10 @@ int CL_EstimateNeededResources( void )
 static void CL_StartResourceDownloading( const char *pszMessage, qboolean bCustom )
 {
 	resourceinfo_t	ri;
+
+#if XASH_ANDROID
+	Android_LoadingStatus( "Verifying and downloading resources...", -1.0f );
+#endif
 
 	if( !COM_StringEmptyOrNULL( pszMessage ))
 		Con_DPrintf( "%s", pszMessage );
