@@ -945,7 +945,7 @@ public class XashActivity extends SDLActivity {
                         }
 
                         p.setColor( LOADING_BAR_BORDER );
-                        p.setStrokeWidth( Math.max( 1, dp( 1 )));
+                        p.setStrokeWidth( Math.max( 1, getResources().getDisplayMetrics().density ));
                         p.setStyle( Paint.Style.STROKE );
                         canvas.drawRect( 0, 0, w, h, p );
                 }
