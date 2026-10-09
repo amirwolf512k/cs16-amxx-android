@@ -34,6 +34,10 @@
     # Android_ShowMOTD log "showMOTD=0x0" and fall back to plain HUD text
     # (no dialog window, no OK button) exactly on release APKs.
     boolean showMOTD(byte[], byte[]);
+    # called from native code via GetMethodID "openExternalURL" -- without
+    # this rule R8 has no Java callers to see and drops the method, the
+    # lookup returns NULL and MOTD links silently never reach the browser
+    boolean openExternalURL(java.lang.String);
     void nativeMOTDClosed();
 }
 
