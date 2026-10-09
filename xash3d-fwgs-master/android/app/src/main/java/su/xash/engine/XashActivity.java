@@ -397,6 +397,13 @@ public class XashActivity extends SDLActivity {
                         String game = mMotdGameDir != null ? mMotdGameDir : "valve";
                         final File gameDir = new File( base, game );
 
+                        // first line of the payload into the console -- when a
+                        // server's MOTD "shows as text only" this tells us what
+                        // it actually sent (real HTML, plain text, or something
+                        // we misdetect) without asking the user to sniff packets
+                        String preview = raw.length() > 120 ? raw.substring( 0, 120 ) + "..." : raw;
+                        consolePrintf( "MOTD: payload preview: " + preview.replace( "\r", "" ).replace( "\n", " " ) );
+
                         final Dialog dialog = new Dialog( this, android.R.style.Theme_Black_NoTitleBar );
                         Window w = dialog.getWindow();
                         w.setBackgroundDrawable( new ColorDrawable( 0x00000000 ) );
@@ -488,7 +495,7 @@ public class XashActivity extends SDLActivity {
                         try {
                                 WebView wv = createMOTDWebView( gameDir );
                                 wv.setBackgroundColor( 0xFF000000 );
-                                wv.loadDataWithBaseURL( "https://motd.local/", buildMOTDDocument( raw ),
+                                wv.loadDataWithBaseURL( "http://motd.local/", buildMOTDDocument( raw ),
                                                 "text/html", "utf-8", null );
                                 mMotdWebView = wv;
                                 content = wv;
@@ -711,9 +718,9 @@ public class XashActivity extends SDLActivity {
                 s.setSavePassword( false );
                 s.setCacheMode( WebSettings.LOAD_NO_CACHE );
                 s.setMediaPlaybackRequiresUserGesture( true );
-                // the MOTD document is loaded from a fake https origin, so
-                // plain-http <img>/<link> targets would be mixed content --
-                // always allow, like the PC window did
+                // the MOTD document is loaded from a plain-http fake origin,
+                // so https pages opening http frames never hit mixed content
+                // -- always allow, like the PC window did
                 s.setMixedContentMode( WebSettings.MIXED_CONTENT_ALWAYS_ALLOW );
 
                 // server MOTD pages are designed for the ~640px-wide PC
@@ -732,7 +739,8 @@ public class XashActivity extends SDLActivity {
                                         return emptyResponse();
 
                                 // game-dir relative resources: served from disk by us
-                                if ( scheme.equals( "https" ) && "motd.local".equals( url.getHost() ) ) {
+                                // (fake origin is http now, https kept for safety)
+                                if ( ( scheme.equals( "http" ) || scheme.equals( "https" ) ) && "motd.local".equals( url.getHost() ) ) {
                                         File f = resolveInGameDir( gameDir, url.getPath() );
                                         if ( f != null ) {
                                                 try {
