@@ -1315,6 +1315,71 @@ void CL_SendGoldSrcConnectPacket( netadr_t adr, int challenge, const void *ticke
 
 /*
 =======================
+CL_AvatarUserInfo
+
+steamid seen in a player's userinfo (reunion/dproto servers put it
+into *sid). Ask the platform to fetch that steam avatar exactly once
+per session so the scoreboard can draw it from media/avatars.
+=======================
+*/
+void CL_AvatarUserInfo( const char *sid )
+{
+	static uint64_t fetched[64];
+	static int fetched_count;
+	uint64_t id64, account;
+	int x = 0, y = 0, i;
+
+	if( COM_StringEmpty( sid ))
+		return;
+
+	if( !Q_strnicmp( sid, "STEAM_", 6 ))
+	{
+		if( sscanf( sid + 6, ":%d:%d", &x, &y ) != 2 || y < 0 )
+			return;
+	}
+	else if( sid[0] == '[' )
+	{
+		if( sscanf( sid, "[U:1:%d]", &y ) != 1 || y < 0 )
+			return;
+		x = 0;
+	}
+	else if( Q_isdigit( sid ) && strchr( sid, ':' ))
+	{
+		if( sscanf( sid, "%d:%d", &x, &y ) != 2 || y < 0 )
+			return;
+	}
+	else if( Q_isdigit( sid ))
+	{
+		y = atoi( sid );
+		x = 0;
+	}
+	else
+	{
+		return;
+	}
+
+	account = ( uint64_t )y * 2 + x;
+	if( account <= 0 || account > 0xFFFFFFFFULL )
+		return;
+
+	id64 = 76561197960265728ULL + account;
+
+	for( i = 0; i < fetched_count; i++ )
+	{
+		if( fetched[i] == id64 )
+			return;
+	}
+
+	if( fetched_count < ( int )( sizeof( fetched ) / sizeof( fetched[0] )))
+		fetched[fetched_count++] = id64;
+
+	Con_DPrintf( "avatar: fetching steam avatar for account %u
+", ( unsigned )account );
+	Android_AvatarFetch( id64 );
+}
+
+/*
+=======================
 CL_SendConnectPacket
 
 We have gotten a challenge from the server, so try and

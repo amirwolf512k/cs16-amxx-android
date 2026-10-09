@@ -109,6 +109,41 @@ public:
 
 	CMenuSpinControl	logo;
 	CMenuPicButton		btnChooseColor;
+
+	class CAvatarsListModel : public CStringVectorModel
+	{
+	public:
+		void Update() override
+		{
+		char **filenames;
+		int numFiles, i;
+
+		RemoveAll();
+		AddToTail( "(none)" );
+
+		filenames = EngFuncs::GetFilesList( "media/avatars/*.*", &numFiles, false );
+
+		for( i = 0; i < numFiles; i++ )
+		{
+			CUtlString f = filenames[i];
+			char temp[256];
+
+			if( !f.BEndsWithCaseless( ".png" ) && !f.BEndsWithCaseless( ".bmp" ))
+				continue;
+
+			COM_FileBase( filenames[i], temp, sizeof( temp ));
+
+			if( !stricmp( temp, "remapped" ) || !stricmp( temp, "(none)" ))
+				continue;
+
+			AddToTail( temp );
+		}
+		}
+	} avatarsModel;
+
+	CMenuSpinControl avatar;
+	CMenuAction avatarHint;
+	bool hideAvatars;
 	CMenuColorPickerDialog	colorPickerDlg;
 	byte			m_stripes[MAX_LOGO_STRIPES][3];
 	int			m_stripeCount;
@@ -271,6 +306,9 @@ void CMenuPlayerSetup::SetConfig( void )
 	hiModels.WriteCvar();
 	showModels.WriteCvar();
 	WriteNewLogo();
+
+	if( !hideAvatars )
+		avatar.WriteCvar();
 }
 
 void CMenuPlayerSetup::SaveAndPopMenu()
@@ -487,7 +525,7 @@ void CMenuPlayerSetup::_Init( void )
 {
 	int addFlags = 0;
 
-	hideModels = hideLogos = false;
+	hideModels = hideLogos = hideAvatars = false;
 
 	ParseLogoColorCvar();
 	m_horizontal = EngFuncs::GetCvarFloat( "ui_logohorizontal" ) != 0.f;
@@ -626,6 +664,23 @@ void CMenuPlayerSetup::_Init( void )
 	}
 	}
 
+	avatarsModel.Update();
+	if( avatarsModel.GetRows() <= 1 )
+	{
+		// no avatar files around, don't show an empty picker
+		hideAvatars = true;
+	}
+	else
+	{
+		avatarHint.szName = L( "Avatar image" );
+		avatarHint.colorBase = uiColorHelp;
+		avatarHint.SetRect( 460, btnChooseColor.pos.y + btnChooseColor.size.h + 28, 200, 24 );
+
+		avatar.Setup( &avatarsModel );
+		avatar.LinkCvar( "cl_avatar", CMenuEditable::CVAR_STRING );
+		avatar.SetRect( 460, avatarHint.pos.y + avatarHint.size.h + UI_OUTLINE_WIDTH, 200, 32 );
+	}
+
 	AddItem( name );
 	AddItem( voiceEnable );
 	AddItem( transmitVolume );
@@ -638,6 +693,12 @@ void CMenuPlayerSetup::_Init( void )
 		AddItem( logo );
 		AddItem( btnChooseColor );
 		AddItem( logoImage );
+	}
+
+	if( !hideAvatars )
+	{
+		AddItem( avatarHint );
+		AddItem( avatar );
 	}
 
 	if( !(gMenu.m_gameinfo.flags & GFL_NOMODELS) )

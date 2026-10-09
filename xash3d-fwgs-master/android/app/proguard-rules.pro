@@ -40,6 +40,7 @@
     void loadingStatus(java.lang.String, float);
     void loadingBanner(java.lang.String);
     void loadingHide();
+    void avatarFetch(long);
     void nativeMOTDClosed();
 }
 

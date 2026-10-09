@@ -39,6 +39,7 @@ struct jnimethods_s
         jmethodID loadingStatus;
         jmethodID loadingBanner;
         jmethodID loadingHide;
+        jmethodID avatarFetch; // steam avatar for the scoreboard
 } jni;
 
 // dialog visibility state so the client dll can
@@ -168,6 +169,25 @@ void Android_LoadingHide( void )
                 (*jni.env)->ExceptionClear( jni.env );
 }
 
+/*
+========================
+Android_AvatarFetch
+
+steam avatar for a player, resolved and cached by the activity so
+the client scoreboard can draw it from media/avatars.
+========================
+*/
+void Android_AvatarFetch( uint64_t steamid64 )
+{
+        if( !jni.env || !jni.activity || !jni.avatarFetch )
+                return;
+
+        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.avatarFetch, ( jlong )steamid64 );
+
+        if( (*jni.env)->ExceptionCheck( jni.env ))
+                (*jni.env)->ExceptionClear( jni.env );
+}
+
 qboolean Android_LoadingCancelled( void )
 {
         qboolean cancelled = g_loading_cancelled;
@@ -194,6 +214,7 @@ void Android_Init( void )
         jni.loadingStatus = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingStatus", "(Ljava/lang/String;F)V" );
         jni.loadingBanner = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingBanner", "(Ljava/lang/String;)V" );
         jni.loadingHide = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingHide", "()V" );
+        jni.avatarFetch = (*jni.env)->GetMethodID( jni.env, jni.actcls, "avatarFetch", "(J)V" );
         // a failed lookup leaves a pending exception; clear it so
         // nothing downstream (filesystem assets, SDL) trips over it
         if( (*jni.env)->ExceptionCheck( jni.env ))

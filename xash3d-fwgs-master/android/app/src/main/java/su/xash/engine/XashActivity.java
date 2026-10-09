@@ -1011,6 +1011,146 @@ public class XashActivity extends SDLActivity {
 
         private static native void nativeLoadingCancelled();
 
+        // ------------------------------------------------------------------
+        // TAB avatars
+        //
+        // the engine forwards every steamid it sees in player userinfo;
+        // we resolve the steam avatar once per id (public community
+        // profile xml, no key needed) and drop a png into
+        // media/avatars/ where the scoreboard picks it up
+        // ------------------------------------------------------------------
+
+        private final java.util.Set<Long> mAvatarFetched =
+                java.util.Collections.synchronizedSet( new java.util.HashSet<Long>() );
+
+        private static final Object AVATAR_RATE_LOCK = new Object();
+        private static long sAvatarLastFetch;
+
+        public void avatarFetch( final long steamid64 ) {
+                Long key = steamid64;
+                if( mAvatarFetched.contains( key )) return;
+
+                final long account = steamid64 - 76561197960265728L;
+                if( account <= 0 || account > 0xFFFFFFFFL ) return;
+
+                final File dir = avatarDir();
+                if( dir == null ) {
+                        mAvatarFetched.add( key );
+                        return;
+                }
+
+                final File out = new File( dir, "av_" + account + ".png" );
+                if( out.isFile() && out.length() > 0 ) {
+                        // already on disk from an earlier session
+                        mAvatarFetched.add( key );
+                        return;
+                }
+
+                mAvatarFetched.add( key );
+
+                Thread t = new Thread( new Runnable() {
+                        @Override public void run() {
+                                try {
+                                        // be gentle with the community endpoint:
+                                        // one request per 300ms across all players
+                                        synchronized( AVATAR_RATE_LOCK ) {
+                                                long now = System.currentTimeMillis();
+                                                long wait = 300 - ( now - sAvatarLastFetch );
+                                                if( wait > 0 ) Thread.sleep( wait );
+                                                sAvatarLastFetch = System.currentTimeMillis();
+                                        }
+
+                                        String xml = httpGetString(
+                                                "https://steamcommunity.com/profiles/" + steamid64 + "/?xml=1" );
+                                        if( xml == null ) return;
+
+                                        String url = extractXmlTag( xml, "avatarFull" );
+                                        if( url == null || url.isEmpty()) return;
+
+                                        byte[] img = httpGetBytes( url );
+                                        if( img == null || img.length < 64 ) return;
+
+                                        Bitmap bmp = BitmapFactory.decodeByteArray( img, 0, img.length );
+                                        if( bmp == null ) return;
+
+                                        java.io.FileOutputStream fos = new java.io.FileOutputStream( out );
+                                        bmp.compress( Bitmap.CompressFormat.PNG, 90, fos );
+                                        fos.close();
+                                        consolePrintf( "Avatar: saved steam avatar for account " + account );
+                                } catch( Throwable t ) {
+                                        Log.w( TAG, "avatar fetch failed", t );
+                                }
+                        }
+                });
+                t.setDaemon( true );
+                t.start();
+        }
+
+        private File avatarDir() {
+                try {
+                        String base = mMotdBaseDir != null ? mMotdBaseDir
+                                : Environment.getExternalStorageDirectory().getAbsolutePath() + "/xash";
+                        String game = mMotdGameDir != null ? mMotdGameDir : "valve";
+                        File dir = new File( base, game + "/media/avatars" );
+                        if( !dir.isDirectory() && !dir.mkdirs() && !dir.isDirectory())
+                                return null;
+                        return dir;
+                } catch( Throwable t ) {
+                        return null;
+                }
+        }
+
+        private String httpGetString( String url ) {
+                byte[] data = httpGetBytes( url );
+                if( data == null ) return null;
+                try {
+                        return new String( data, "UTF-8" );
+                } catch( Throwable t ) {
+                        return null;
+                }
+        }
+
+        private byte[] httpGetBytes( String url ) {
+                java.net.HttpURLConnection c = null;
+                try {
+                        c = ( java.net.HttpURLConnection ) new java.net.URL( url ).openConnection();
+                        c.setConnectTimeout( 8000 );
+                        c.setReadTimeout( 10000 );
+                        c.setInstanceFollowRedirects( true );
+                        c.setRequestProperty( "User-Agent", "Mozilla/5.0 (Xash3D Android)" );
+
+                        java.io.InputStream in = c.getInputStream();
+                        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+                        byte[] chunk = new byte[16384];
+                        int n;
+                        while(( n = in.read( chunk )) > 0 ) {
+                                buf.write( chunk, 0, n );
+                                if( buf.size() > 8 * 1024 * 1024 ) break;
+                        }
+                        in.close();
+                        return buf.toByteArray();
+                } catch( Throwable t ) {
+                        Log.w( TAG, "http get failed: " + url, t );
+                        return null;
+                } finally {
+                        if( c != null ) try { c.disconnect(); } catch( Throwable ignored ) {}
+                }
+        }
+
+        /** First <tag>...</tag> value of a small xml page, CDATA stripped. */
+        private static String extractXmlTag( String xml, String tag ) {
+                String open = "<" + tag + ">";
+                String close = "</" + tag + ">";
+                int a = xml.indexOf( open );
+                int b = xml.indexOf( close, a >= 0 ? a : 0 );
+                if( a < 0 || b < 0 ) return null;
+
+                String v = xml.substring( a + open.length(), b ).trim();
+                if( v.startsWith( "<![CDATA[" ) && v.endsWith( "]]>" ))
+                        v = v.substring( 9, v.length() - 3 ).trim();
+                return v;
+        }
+
         private Drawable makeLoadingPanelBackground() {
                 GradientDrawable d = new GradientDrawable();
                 d.setColor( LOADING_PANEL_BG );

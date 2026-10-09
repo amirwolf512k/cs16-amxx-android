@@ -88,8 +88,126 @@ static struct Column
 
 //#include "vgui_TeamFortressViewport.h"
 
+// tab avatars -----------------------------------------------------------------
+// the engine saves every player's steam avatar into media/avatars/ (keyed by
+// the account number from *sid) and the customize menu lets you pick a
+// personal one (cl_avatar). The scoreboard only draws what is on disk and
+// probes again every couple of seconds while downloads are still landing.
+#define AVATAR_PROBE_TIME 2.0f
+
+static struct model_s *s_pAvatarModel[MAX_PLAYERS+1];
+static float s_flAvatarNextProbe[MAX_PLAYERS+1];
+static cvar_t *cl_avatar = NULL;
+
+// reunion/dproto servers put the steamid into userinfo "*sid";
+// fold whatever spelling it is to the bare account number
+static bool Scoreboard_AvatarAccount( const char *sid, int *account )
+{
+	int x = 0, y = 0;
+
+	if( !sid || !sid[0] )
+		return false;
+
+	if( !strnicmp( sid, "STEAM_", 6 ))
+	{
+		if( sscanf( sid + 6, ":%d:%d", &x, &y ) != 2 || y < 0 )
+			return false;
+	}
+	else if( sid[0] == '[' )
+	{
+		if( sscanf( sid, "[U:1:%d]", &y ) != 1 || y < 0 )
+			return false;
+		*account = y;
+		return true;
+	}
+	else if( isdigit( (unsigned char)sid[0] ) && strchr( sid, ':' ))
+	{
+		if( sscanf( sid, "%d:%d", &x, &y ) != 2 || y < 0 )
+			return false;
+	}
+	else if( isdigit( (unsigned char)sid[0] ))
+	{
+		*account = atoi( sid );
+		return *account > 0;
+	}
+	else
+	{
+		return false;
+	}
+
+	*account = y * 2 + x;
+	return *account > 0;
+}
+
+static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
+{
+	char path[256], sid[128];
+	int account;
+
+	if( s_pAvatarModel[slot] )
+		return s_pAvatarModel[slot];
+
+	if( flTime < s_flAvatarNextProbe[slot] )
+		return NULL;
+
+	s_flAvatarNextProbe[slot] = flTime + AVATAR_PROBE_TIME;
+
+	if( g_PlayerInfoList[slot].thisplayer && cl_avatar && cl_avatar->string[0] )
+	{
+		// personal pick from the customize menu wins over the steam one
+		snprintf( path, sizeof( path ), "%s", cl_avatar->string );
+	}
+	else
+	{
+		strncpy( sid, gEngfuncs.PlayerInfo_ValueForKey( slot, "*sid" ), sizeof( sid ) - 1 );
+		sid[sizeof( sid ) - 1] = 0;
+
+		if( !Scoreboard_AvatarAccount( sid, &account ))
+			return NULL;
+
+		snprintf( path, sizeof( path ), "media/avatars/av_%d.png", account );
+	}
+
+	s_pAvatarModel[slot] = gEngfuncs.LoadMapSprite( path );
+
+	return s_pAvatarModel[slot];
+}
+
+static void Scoreboard_AvatarsInit( void )
+{
+	cl_avatar = CVAR_CREATE( "cl_avatar", "", FCVAR_ARCHIVE );
+	memset( s_pAvatarModel, 0, sizeof( s_pAvatarModel ));
+	memset( s_flAvatarNextProbe, 0, sizeof( s_flAvatarNextProbe ));
+}
+
+static void Scoreboard_AvatarsReset( void )
+{
+	memset( s_pAvatarModel, 0, sizeof( s_pAvatarModel ));
+	memset( s_flAvatarNextProbe, 0, sizeof( s_flAvatarNextProbe ));
+}
+
+// draws the avatar left of the name and returns the shifted name x
+static int Scoreboard_DrawAvatar( int slot, int x, int ypos )
+{
+	struct model_s *avatar = Scoreboard_GetAvatar( slot, gHUD.m_flTime );
+	int asz = ROW_GAP - 3;
+
+	if( !avatar )
+		return x;
+
+	gEngfuncs.pTriAPI->RenderMode( kRenderTransTexture );
+	gEngfuncs.pTriAPI->CullFace( TRI_NONE );
+	gEngfuncs.pTriAPI->Color4f( 1.0f, 1.0f, 1.0f, 1.0f );
+	gEngfuncs.pTriAPI->SpriteTexture( avatar, 0 );
+	DrawUtils::Draw2DQuad( (float)x + 1, (float)ypos + 1, (float)x + 1 + asz, (float)ypos + 1 + asz );
+
+	return x + asz + 3;
+}
+
 int CHudScoreboard :: Init( void )
 {
+	Scoreboard_AvatarsInit();
+
 	gHUD.AddHudElem( this );
 
 	// Hook messages & commands here
@@ -126,6 +244,8 @@ int CHudScoreboard :: VidInit( void )
 
 void CHudScoreboard :: InitHUDData( void )
 {
+	Scoreboard_AvatarsReset();
+
 	memset( g_PlayerExtraInfo, 0, sizeof g_PlayerExtraInfo );
 	m_iLastKilledBy = 0;
 	m_fLastKillTime = 0;
@@ -476,7 +596,11 @@ int CHudScoreboard :: DrawPlayers( float list_slot, int nameoffset, const char *
 			FillRGBABlend( xstart, ypos, xend - xstart, ROW_GAP, 255, 255, 255, 15 );
 		}
 
-		DrawUtils::DrawHudString( g_Columns[COL_NAME].start + nameoffset, ypos, g_Columns[COL_NAME].start + 350, pl_info->name, r, g, b );
+		{
+			int nameX = Scoreboard_DrawAvatar( best_player, g_Columns[COL_NAME].start + nameoffset, ypos );
+
+			DrawUtils::DrawHudString( nameX, ypos, g_Columns[COL_NAME].start + 350, pl_info->name, r, g, b );
+		}
 
 		if( cl_showplayerversion->value == 0.0f )
 		{

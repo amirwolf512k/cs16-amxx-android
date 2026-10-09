@@ -1398,6 +1398,17 @@ static void CL_UpdateUserinfo( sizebuf_t *msg, connprotocol_t proto )
 
 		if( active && slot == cl.playernum )
 			gameui.playerinfo = *player;
+
+#if XASH_ANDROID
+		// steamid from reunion/dproto userinfo -> steam avatar for the
+		// scoreboard, fetched once per id by the platform layer
+		{
+			const char *avsid = Info_ValueForKey( player->userinfo, "*sid" );
+
+			if( active && !COM_StringEmpty( avsid ))
+				CL_AvatarUserInfo( avsid );
+		}
+#endif
 	}
 
 
