@@ -30,6 +30,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -389,6 +390,8 @@ public class XashActivity extends SDLActivity {
                         String raw = new String( htmlBytes, "UTF-8" );
                         Log.i( TAG, "MOTD dialog: title=\"" + title + "\" payloadBytes="
                                 + ( htmlBytes != null ? htmlBytes.length : -1 ));
+                        consolePrintf( "MOTD: dialog requested (title=\"" + title + "\", "
+                                + ( htmlBytes != null ? htmlBytes.length : -1 ) + " bytes)" );
                         String base = mMotdBaseDir != null ? mMotdBaseDir
                                 : Environment.getExternalStorageDirectory().getAbsolutePath() + "/xash";
                         String game = mMotdGameDir != null ? mMotdGameDir : "valve";
@@ -489,6 +492,7 @@ public class XashActivity extends SDLActivity {
                                                 "text/html", "utf-8", null );
                                 mMotdWebView = wv;
                                 content = wv;
+                                consolePrintf( "MOTD: WebView created, page loading" );
                         } catch ( Throwable wt ) {
                                 consolePrintf( "MOTD: WebView unavailable (" + wt + "), using styled text" );
 
@@ -555,6 +559,7 @@ public class XashActivity extends SDLActivity {
                         mMotdDialog = dialog;
                         dialog.show();
                         Log.i( TAG, "MOTD dialog shown (WebView HTML rendering)" );
+                        consolePrintf( "MOTD: dialog shown" );
                         return true;
                 } catch ( Throwable t ) {
                         Log.w( TAG, "showMOTD failed", t );
@@ -601,6 +606,8 @@ public class XashActivity extends SDLActivity {
                         || lower.contains( "<hr" ) || lower.contains( "<a " ) || lower.contains( "<!doctype" );
 
                 Log.i( TAG, "MOTD content: len=" + trimmed.length() + " html=" + looksHtml );
+                consolePrintf( "MOTD: content is " + ( looksHtml ? "html" : "plain text" )
+                        + " (" + trimmed.length() + " chars)" );
 
                 if ( looksHtml )
                         return trimmed;
@@ -758,6 +765,38 @@ public class XashActivity extends SDLActivity {
                                 // content, mailto, intent, market) stays blocked
                                 String scheme = request.getUrl().getScheme();
                                 return !( "http".equals( scheme ) || "https".equals( scheme ));
+                        }
+
+                        @Override
+                        public void onPageFinished( WebView view, String url ) {
+                                consolePrintf( "MOTD: page ready: " + url );
+                        }
+
+                        @Override
+                        public void onReceivedError( WebView view, WebResourceRequest request, android.webkit.WebResourceError error ) {
+                                consolePrintf( "MOTD: load error " + error.getErrorCode() + " "
+                                        + request.getUrl() + ": " + error.getDescription());
+                        }
+
+                        @Override
+                        public void onReceivedHttpError( WebView view, WebResourceRequest request, WebResourceResponse response ) {
+                                consolePrintf( "MOTD: http " + response.getStatusCode()
+                                        + " " + request.getUrl());
+                        }
+                } );
+
+                // surface page JS console output (a few lines max, some
+                // server pages log every frame) -- enough to tell why a
+                // server MOTD page came up blank
+                wv.setWebChromeClient( new WebChromeClient() {
+                        private int mLines;
+
+                        @Override
+                        public boolean onConsoleMessage( android.webkit.ConsoleMessage cm ) {
+                                if( mLines++ < 20 )
+                                        consolePrintf( "MOTD: js: " + cm.message() + " ("
+                                                + cm.sourceId() + ":" + cm.lineNumber() + ")" );
+                                return true;
                         }
                 } );
 

@@ -3778,8 +3778,14 @@ static int GAME_EXPORT pfnShowMOTD( const char *title, const char *html )
 	// renames the server to the plugin title ("Top 15", rank pages, ...)
 	// while the MOTD streams. Old client dlls pass an empty title and
 	// keep the old connect-address fallback (cls.servername).
+	Con_Printf( "MOTD: opening platform dialog (%u bytes, title: %s)\n",
+		(unsigned)strlen( html ), COM_StringEmptyOrNULL( title ) ? cls.servername : title );
+
 	if( Android_ShowMOTD( COM_StringEmptyOrNULL( title ) ? cls.servername : title, html ))
+	{
+		Con_Printf( "MOTD: dialog shown\n" );
 		return true;
+	}
 
 	// the dialog could not be shown (WebView missing, activity
 	// dying, ...). Report failure so the client dll can fall back to

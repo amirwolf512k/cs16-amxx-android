@@ -240,6 +240,8 @@ int CHudMOTD :: MsgFunc_MOTD( const char *pszName, int iSize, void *pbuf )
                 // renderer with tags stripped, so the MOTD is never lost.
                 if( gEngfuncs.pfnShowMOTD )
                 {
+                        gEngfuncs.Con_Printf( "MOTD: %d chars buffered, opening MOTD window (server: %s)\n",
+                                (int)strlen( m_szMOTD.String() ), gHUD.m_szServerName );
                         // the MOTD window title is the SERVER NAME as of
                         // the moment the MOTD completes -- exactly like the
                         // retail CS 1.6 client. The gamedll sends
