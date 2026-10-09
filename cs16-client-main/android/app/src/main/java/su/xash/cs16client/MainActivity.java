@@ -88,6 +88,23 @@ public class MainActivity extends Activity {
                 launchEngine();
         }
 
+        // the game dir to launch: cstrike when it has content, czero when
+        // that is all the user copied (Condition Zero installs), cstrike
+        // otherwise (engine will show the usual "no game content" error)
+        private String pickGameDir() {
+                if( new File( getXashDir(), "cstrike/liblist.gam" ).isFile())
+                        return "cstrike";
+
+                if( new File( getXashDir(), "czero/liblist.gam" ).isFile())
+                        return "czero";
+
+                return "cstrike";
+        }
+
+        private boolean hasCzero() {
+                return new File( getXashDir(), "czero/liblist.gam" ).isFile();
+        }
+
         // ------------------------------------------------------------------
         // append install problems to <xash>/amxx-install-log.txt so we can
         // see the exact reason (EACCES, missing asset, ...) when the user
@@ -186,6 +203,8 @@ public class MainActivity extends Activity {
         // It is extracted into /storage/emulated/0/xash so that the patched
         // engine (su.xash.engine.test) finds the metamod library when the
         // server gamelib is loaded and relays plugin loading to AMX Mod X.
+        // Condition Zero installs (czero/) get the same pack with the
+        // cstrike/ prefix rewritten, so CZ users get AMXX too.
         // ------------------------------------------------------------------
 
         private File getXashDir() {
@@ -197,8 +216,12 @@ public class MainActivity extends Activity {
                 // installs ONLY the counter-strike addon pack. The valve
                 // (Half-Life) AMX addons are handled by the engine app itself
                 // (Xash3D FWGS (AMXX)) at valve game launch since v9.
-                extractZipIfNeeded( "addons.zip", "addons_version",
-                        "cstrike/addons/metamod/dlls/libmetamod_android_arm64.so" );
+                extractZipIfNeeded( "addons.zip", "addons_version", "cstrike" );
+
+                // Condition Zero users keep their content in czero/; give
+                // them the same addon pack under that prefix
+                if( hasCzero())
+                        extractZipIfNeeded( "addons.zip", "addons_version_czero", "czero" );
 
                 // the stale-file cleanup is GONE. It deleted the
                 // ProBaseBuilder file set (bb plugins, Pro_basebuilder.ini and
@@ -212,18 +235,22 @@ public class MainActivity extends Activity {
                 // keep plugins.ini in sync with this app's nativeLibraryDir
                 // (YaPB as metamod plugin) - must run on every launch in case the
                 // engine/game ABI layout changed, and it is cheap anyway.
-                patchPluginsIni();
+                patchPluginsIni( "cstrike" );
+                if( hasCzero())
+                        patchPluginsIni( "czero" );
         }
 
         private void extractZipIfNeeded( String assetName, String prefKey,
-                String markerRelPath ) throws Exception {
+                String gameDir ) throws Exception {
                 SharedPreferences prefs = getPreferences( MODE_PRIVATE );
                 String installed = prefs.getString( prefKey, null );
 
-                File markerLib = new File( getXashDir(), markerRelPath );
+                File markerLib = new File( getXashDir(),
+                        gameDir + "/addons/metamod/dlls/libmetamod_android_arm64.so" );
 
                 if( ADDONS_VERSION.equals( installed ) && markerLib.isFile() ) {
-                        Log.i( TAG, "AMXX addons up to date (" + assetName + ": " + ADDONS_VERSION + ")" );
+                        Log.i( TAG, "AMXX addons up to date (" + assetName + ": " + gameDir
+                                + ": " + ADDONS_VERSION + ")" );
                         return;
                 }
 
@@ -231,6 +258,8 @@ public class MainActivity extends Activity {
                 String destCanon = dest.getCanonicalPath();
                 byte[] buffer = new byte[65536];
                 int count = 0;
+
+                Log.i( TAG, "extracting " + assetName + " into " + gameDir + "/" );
 
                 InputStream in = getAssets().open( assetName );
                 ZipInputStream zis = new ZipInputStream( in );
@@ -240,7 +269,17 @@ public class MainActivity extends Activity {
                         if( entry.isDirectory() )
                                 continue;
 
-                        File outFile = new File( dest, entry.getName() );
+                        String name = entry.getName();
+
+                        // the pack ships under the cstrike/ prefix; rewrite it
+                        // for the czero copy and drop anything else so a
+                        // future zip change cannot spill outside the game dir
+                        if( name.startsWith( "cstrike/" ))
+                                name = gameDir + name.substring( "cstrike".length());
+                        else if( !gameDir.equals( "cstrike" ))
+                                continue;
+
+                        File outFile = new File( dest, name );
 
                         // zip-slip guard
                         if( !outFile.getCanonicalPath().startsWith( destCanon + File.separator )) {
@@ -261,7 +300,7 @@ public class MainActivity extends Activity {
                         if( outFile.isFile() && outFile.getPath().contains(
                                         File.separator + "addons" + File.separator + "amxmodx"
                                         + File.separator + "configs" + File.separator )) {
-                                Log.i( TAG, "keeping user config: " + entry.getName() );
+                                Log.i( TAG, "keeping user config: " + name );
                                 zis.closeEntry();
                                 continue;
                         }
@@ -282,9 +321,9 @@ public class MainActivity extends Activity {
                 zis.close();
 
                 prefs.edit().putString( prefKey, ADDONS_VERSION ).apply();
-                Log.i( TAG, "AMXX addons extracted (" + assetName + "): " + count
+                Log.i( TAG, "AMXX addons extracted (" + assetName + " -> " + gameDir + "): " + count
                         + " files -> " + dest.getAbsolutePath() );
-                                Toast.makeText( this, "AMX Mod X addons installed (" + assetName + ": "
+                                Toast.makeText( this, "AMX Mod X addons installed (" + gameDir + ": "
                                                 + count + " files)", Toast.LENGTH_SHORT ).show();
         }
 
@@ -300,9 +339,9 @@ public class MainActivity extends Activity {
          *   nativeLibraryDir, which is only known at runtime - so we write it
          *   here, right after the extraction.
          */
-        private void patchPluginsIni() {
+        private void patchPluginsIni( String gameDir ) {
                 try {
-                        File ini = new File( getXashDir(), "cstrike/addons/metamod/plugins.ini" );
+                        File ini = new File( getXashDir(), gameDir + "/addons/metamod/plugins.ini" );
                         File dir = ini.getParentFile();
                         if( dir == null )
                                 return;
@@ -410,9 +449,12 @@ public class MainActivity extends Activity {
                         }
                 }
 
+                String gameDir = pickGameDir();
+                Log.i( TAG, "launching engine, gamedir=" + gameDir );
+
                 startActivity( new Intent().setComponent( new ComponentName( pkg, "su.xash.engine.XashActivity" ) )
                         .setFlags( Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK )
-                        .putExtra( "gamedir", "cstrike" )
+                        .putExtra( "gamedir", gameDir )
                         .putExtra( "gamelibdir", getApplicationInfo().nativeLibraryDir )
                         .putExtra( "argv", "-dev 2 -log" )  // no -dll @yapb -- YaPB loads via metamod plugins.ini
                         .putExtra( "package", getPackageName() ));
