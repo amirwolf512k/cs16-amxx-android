@@ -556,9 +556,14 @@ public class XashActivity extends SDLActivity {
                                 @Override
                                 public void onDismiss( DialogInterface d ) {
                                         mMotdDialog = null;
-                                        // reclaim the WebView when the user
-                                        // closes the dialog with OK/back too
-                                        scheduleMotdWebViewDestroy();
+                                        // the page itself keeps running in the
+                                        // background until the next MOTD replaces
+                                        // it: server auth pages (next21 style)
+                                        // finish their client check from here,
+                                        // and destroying the view on OK left
+                                        // that check unfinished -- players got
+                                        // dropped from those servers later on
+                                        consolePrintf( "MOTD: window closed, page keeps running in background" );
                                         notifyMOTDClosed();
                                 }
                         } );
