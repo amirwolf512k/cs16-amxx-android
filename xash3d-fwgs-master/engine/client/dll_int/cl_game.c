@@ -3756,7 +3756,7 @@ static IVoiceTweak gVoiceApi =
 
 // engine callbacks
 // set in CL_LoadProgs, guarded use below (cvar is optional)
-static cvar_t *cl_motd_browser = NULL;
+static convar_t *cl_motd_browser = NULL;
 
 // static buffer so the caller can hand the link straight to the browser
 static char motd_link[2048];
