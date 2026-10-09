@@ -104,6 +104,7 @@ int Android_GetKeyboardHeight( void );
 void Android_Shutdown( void );
 qboolean Android_ShowMOTD( const char *title, const char *html ); // title = server name; returns false when the dialog could not be shown
 qboolean Android_IsMOTDDialogOpen( void ); // true while the MOTD dialog is on screen
+qboolean Android_OpenURL( const char *url ); // opens http(s) links in the system browser, false when rejected
 void Android_MOTDDialogClosed( void ); // called from Java when the dialog is dismissed
 #endif
 
