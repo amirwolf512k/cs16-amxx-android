@@ -359,6 +359,20 @@ protected:
 };
 
 
+class CHudSpecBanner: public CHudBase
+{
+public:
+	int Init( void );
+	int VidInit( void );
+	int Draw( float flTime );
+
+private:
+	struct model_s *m_pBanner;
+	float m_flNextProbe;
+	char m_szLoadedFrom[256];
+	cvar_t *cl_spec_banner;
+};
+
 class CHudScoreboard: public CHudBase
 {
 	friend class CHudSpectatorGui;
@@ -1083,6 +1097,7 @@ public:
 	CHudStatusIcons m_StatusIcons;
 	CHudScoreboard  m_Scoreboard;
 	CHudMOTD        m_MOTD;
+	CHudSpecBanner  m_SpecBanner;
 	CHudMoney       m_Money;
 	CHudTimer       m_Timer;
 	CHudRadio       m_Radio;

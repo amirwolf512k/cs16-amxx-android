@@ -41,6 +41,7 @@
     void loadingBanner(java.lang.String);
     void loadingHide();
     void avatarFetch(long);
+    void specBannerFetch(java.lang.String);
     void nativeMOTDClosed();
 }
 

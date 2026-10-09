@@ -1137,6 +1137,65 @@ public class XashActivity extends SDLActivity {
                 }
         }
 
+        // ------------------------------------------------------------------
+        // spec banner
+        //
+        // servers point clients at an image with client_cmd
+        // cl_spec_banner <url>; we keep it in media/spec_banner.png with a
+        // "<w> <h>" companion so the client dll draws the right aspect
+        // ------------------------------------------------------------------
+
+        public void specBannerFetch( final String url ) {
+                if( url == null || url.isEmpty()) return;
+
+                Thread t = new Thread( new Runnable() {
+                        @Override public void run() {
+                                try {
+                                        File dir = avatarDir();
+                                        if( dir == null ) return;
+
+                                        File img = new File( dir.getParentFile(), "spec_banner.png" );
+                                        File meta = new File( dir.getParentFile(), "spec_banner.txt" );
+                                        File marker = new File( dir.getParentFile(), "spec_banner.url" );
+
+                                        // same url as last time -> the image is current
+                                        if( img.isFile() && meta.isFile() && marker.isFile() )
+                                        {
+                                                java.io.FileInputStream min = new java.io.FileInputStream( marker );
+                                                byte[] mb = new byte[( int )marker.length()];
+                                                int got = min.read( mb );
+                                                min.close();
+                                                if( got > 0 && url.contentEquals( new String( mb, 0, got, "UTF-8" ).trim() ))
+                                                        return;
+                                        }
+
+                                        byte[] data = httpGetBytes( url );
+                                        if( data == null || data.length < 64 ) return;
+
+                                        Bitmap bmp = BitmapFactory.decodeByteArray( data, 0, data.length );
+                                        if( bmp == null ) return;
+
+                                        java.io.FileOutputStream fos = new java.io.FileOutputStream( img );
+                                        bmp.compress( Bitmap.CompressFormat.PNG, 90, fos );
+                                        fos.close();
+
+                                        java.io.FileWriter mw = new java.io.FileWriter( meta );
+                                        mw.write( bmp.getWidth() + " " + bmp.getHeight() );
+                                        mw.close();
+
+                                        java.io.FileWriter uw = new java.io.FileWriter( marker );
+                                        uw.write( url );
+                                        uw.close();
+                                        consolePrintf( "Spec banner: saved " + bmp.getWidth() + "x" + bmp.getHeight() );
+                                } catch( Throwable t ) {
+                                        Log.w( TAG, "spec banner fetch failed", t );
+                                }
+                        }
+                });
+                t.setDaemon( true );
+                t.start();
+        }
+
         /** First <tag>...</tag> value of a small xml page, CDATA stripped. */
         private static String extractXmlTag( String xml, String tag ) {
                 String open = "<" + tag + ">";

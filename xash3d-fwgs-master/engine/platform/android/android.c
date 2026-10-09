@@ -40,6 +40,7 @@ struct jnimethods_s
         jmethodID loadingBanner;
         jmethodID loadingHide;
         jmethodID avatarFetch; // steam avatar for the scoreboard
+        jmethodID specBanner; // spec-mode banner image
 } jni;
 
 // dialog visibility state so the client dll can
@@ -66,6 +67,37 @@ static qboolean LoadingURLIsSafe( const char *url )
         }
 
         return true;
+}
+
+/*
+========================
+Android_SpecBannerFetch
+
+the server set cl_spec_banner to an image url (through client_cmd);
+hand it to the activity so media/spec_banner.png appears for the
+client dll to draw in the spec corner.
+========================
+*/
+void Android_SpecBannerFetch( const char *url )
+{
+        jstring jstr;
+
+        if( !jni.env || !jni.activity || !jni.specBanner )
+                return;
+
+        if( !LoadingURLIsSafe( url ))
+                return;
+
+        jstr = (*jni.env)->NewStringUTF( jni.env, url );
+
+        if( !jstr )
+                return;
+
+        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.specBanner, jstr );
+        (*jni.env)->DeleteLocalRef( jni.env, jstr );
+
+        if( (*jni.env)->ExceptionCheck( jni.env ))
+                (*jni.env)->ExceptionClear( jni.env );
 }
 
 /*
@@ -215,6 +247,7 @@ void Android_Init( void )
         jni.loadingBanner = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingBanner", "(Ljava/lang/String;)V" );
         jni.loadingHide = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingHide", "()V" );
         jni.avatarFetch = (*jni.env)->GetMethodID( jni.env, jni.actcls, "avatarFetch", "(J)V" );
+        jni.specBanner = (*jni.env)->GetMethodID( jni.env, jni.actcls, "specBannerFetch", "(Ljava/lang/String;)V" );
         // a failed lookup leaves a pending exception; clear it so
         // nothing downstream (filesystem assets, SDL) trips over it
         if( (*jni.env)->ExceptionCheck( jni.env ))
