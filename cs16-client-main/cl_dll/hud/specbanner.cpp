@@ -64,7 +64,7 @@ int CHudSpecBanner::Draw( float flTime )
 		return 0;
 
 	// waiting players only: dead or on the spectator queue
-	if( !g_iUser1 && ( gHUD.m_iPlayerNum <= 0 || !g_PlayerExtraInfo[gHUD.m_iPlayerNum].dead ))
+	if( !g_iUser1 && ( gHUD.m_Scoreboard.m_iPlayerNum <= 0 || !g_PlayerExtraInfo[gHUD.m_Scoreboard.m_iPlayerNum].dead ))
 		return 0;
 
 	if( !m_pBanner || strcmp( m_szLoadedFrom, src ))

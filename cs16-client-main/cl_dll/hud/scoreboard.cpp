@@ -88,6 +88,10 @@ static struct Column
 
 //#include "vgui_TeamFortressViewport.h"
 
+
+// Y positions
+#define ROW_GAP  15
+
 // tab avatars -----------------------------------------------------------------
 // the engine saves every player's steam avatar into media/avatars/ (keyed by
 // the account number from *sid) and the customize menu lets you pick a
@@ -284,8 +288,6 @@ bool CHudScoreboard :: ShouldDrawScoreboard() const
 }
 
 // Y positions
-#define ROW_GAP  15
-
 int CHudScoreboard :: Draw( float flTime )
 {
 	if( !ShouldDrawScoreboard( ))
