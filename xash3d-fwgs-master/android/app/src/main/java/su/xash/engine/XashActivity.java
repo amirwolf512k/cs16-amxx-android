@@ -980,25 +980,148 @@ public class XashActivity extends SDLActivity {
                 });
         }
 
-        /** Server banner url from the connect page (extracted by the
-         *  engine). Remembered per server so the next connect shows it
-         *  from the first frame; shown immediately when the window is
-         *  already up. */
-        public void loadingBanner( final String url ) {
+        /** The director banner (DRC_CMD_BANNER): a game-relative path to
+         *  the server's tga, downloaded with the other resources. The file
+         *  may still be in flight, so poll until it lands or the loading
+         *  window goes away — this is what the PC loading dialog showed. */
+        public void loadingBannerFile( final String relPath ) {
                 runOnUiThread( new Runnable() {
                         @Override public void run() {
                                 try {
-                                        if( url == null || url.isEmpty()) return;
-                                        if( !mLoadingServer.isEmpty() )
-                                                getSharedPreferences( "loading_banners", MODE_PRIVATE )
-                                                        .edit().putString( mLoadingServer, url ).apply();
-                                        if( mLoadingOverlay != null )
-                                                loadLoadingBanner( url, false );
+                                        if( relPath == null || relPath.isEmpty()) return;
+                                        if( mLoadingOverlay == null ) return;
+
+                                        final String path = relPath;
+                                        final android.os.Handler h = new android.os.Handler();
+                                        final int[] tries = { 0 };
+                                        Runnable poll = null;
+
+                                        poll = new Runnable() {
+                                                @Override public void run() {
+                                                        if( mLoadingOverlay == null || mLoadingBanner == null ) return;
+                                                        if( tries[0]++ > 40 ) return; // ~60s then give up
+
+                                                        File f = gameDirFile( path );
+                                                        if( f == null || !f.isFile() || f.length() < 18 ) {
+                                                                h.postDelayed( this, 1500 );
+                                                                return;
+                                                        }
+
+                                                        Bitmap bmp = decodeImageFile( f );
+                                                        if( bmp == null ) {
+                                                                h.postDelayed( this, 1500 );
+                                                                return;
+                                                        }
+
+                                                        mLoadingBanner.setImageBitmap( bmp );
+                                                        mLoadingBanner.setVisibility( View.VISIBLE );
+                                                }
+                                        };
+                                        poll.run();
                                 } catch( Throwable t ) {
-                                        Log.w( TAG, "loadingBanner failed", t );
+                                        Log.w( TAG, "loadingBannerFile failed", t );
                                 }
                         }
                 });
+        }
+
+        /** Resolve a game-relative path against the running gamedir. */
+        private File gameDirFile( String relPath ) {
+                try {
+                        String base = mMotdBaseDir != null ? mMotdBaseDir
+                                : Environment.getExternalStorageDirectory().getAbsolutePath() + "/xash";
+                        String game = mMotdGameDir != null ? mMotdGameDir : "valve";
+                        File f = new File( base, game + "/" + relPath );
+                        return f.getCanonicalPath().startsWith( new File( base, game ).getCanonicalPath() ) ? f : null;
+                } catch( Throwable t ) {
+                        return null;
+                }
+        }
+
+        /** Whatever the server shipped: png/jpg/bmp through BitmapFactory,
+         *  24/32-bit tga (the director banner format) through a small
+         *  decoder. Returns null for anything else. */
+        private Bitmap decodeImageFile( File f ) {
+                try {
+                        byte[] data = new byte[( int )f.length()];
+                        java.io.FileInputStream in = new java.io.FileInputStream( f );
+                        int read = 0, n;
+                        while( read < data.length && ( n = in.read( data, read, data.length - read )) > 0 )
+                                read += n;
+                        in.close();
+                        if( read <= 0 ) return null;
+
+                        Bitmap bmp = BitmapFactory.decodeByteArray( data, 0, read );
+                        if( bmp != null ) return bmp;
+
+                        return decodeTga( data );
+                } catch( Throwable t ) {
+                        return null;
+                }
+        }
+
+        /** Minimal tga reader for the server banners: type 2 (raw) and
+         *  10 (RLE), 24/32 bits per pixel, any origin. */
+        private static Bitmap decodeTga( byte[] b ) {
+                try {
+                        if( b.length < 18 ) return null;
+                        int idLen = b[0] & 0xFF;
+                        int cmapType = b[1] & 0xFF;
+                        int type = b[2] & 0xFF;
+                        int w = ( b[12] & 0xFF ) | (( b[13] & 0xFF ) << 8 );
+                        int h = ( b[14] & 0xFF ) | (( b[15] & 0xFF ) << 8 );
+                        int bpp = b[16] & 0xFF;
+                        int desc = b[17] & 0xFF;
+                        boolean topOrigin = ( desc & 0x20 ) != 0;
+
+                        if( cmapType != 0 || ( type != 2 && type != 10 ))
+                                return null;
+                        if( w <= 0 || h <= 0 || w > 4096 || h > 4096 )
+                                return null;
+                        if( bpp != 24 && bpp != 32 )
+                                return null;
+
+                        int bytes = bpp / 8;
+                        int off = 18 + idLen;
+                        int[] pix = new int[w * h];
+                        int src = off;
+
+                        for( int y = 0; y < h; y++ ) {
+                                int row = topOrigin ? y : ( h - 1 - y );
+                                for( int x = 0; x < w; ) {
+                                        if( src >= b.length ) return null;
+                                        int count = 1;
+                                        boolean rle = false;
+                                        if( type == 10 ) {
+                                                int packet = b[src++] & 0xFF;
+                                                rle = ( packet & 0x80 ) != 0;
+                                                count = ( packet & 0x7F ) + 1;
+                                        }
+                                        for( int k = 0; k < count && x < w; k++, x++ ) {
+                                                if( !rle ) {
+                                                        if( src + bytes > b.length ) return null;
+                                                }
+                                                int bb, gg, rr, aa = 0xFF;
+                                                if( rle ) {
+                                                        if( src + bytes > b.length ) return null;
+                                                        bb = b[src] & 0xFF; gg = b[src + 1] & 0xFF;
+                                                        rr = b[src + 2] & 0xFF;
+                                                        if( bytes == 4 ) aa = b[src + 3] & 0xFF;
+                                                } else {
+                                                        bb = b[src] & 0xFF; gg = b[src + 1] & 0xFF;
+                                                        rr = b[src + 2] & 0xFF;
+                                                        if( bytes == 4 ) aa = b[src + 3] & 0xFF;
+                                                        src += bytes;
+                                                }
+                                                pix[row * w + x] = ( aa << 24 ) | ( rr << 16 ) | ( gg << 8 ) | bb;
+                                        }
+                                        if( rle ) src += bytes;
+                                }
+                        }
+                        return Bitmap.createBitmap( pix, w, h, Bitmap.Config.ARGB_8888 );
+                } catch( Throwable t ) {
+                        return null;
+                }
         }
 
         public void loadingHide() {
@@ -1040,8 +1163,11 @@ public class XashActivity extends SDLActivity {
                 }
 
                 final File out = new File( dir, "av_" + account + ".png" );
-                if( out.isFile() && out.length() > 0 ) {
-                        // already on disk from an earlier session
+                long stale = System.currentTimeMillis() - 24L * 60 * 60 * 1000;
+                if( out.isFile() && out.length() > 0 && out.lastModified() > stale ) {
+                        // fresh copy on disk from an earlier session; steam
+                        // avatars change, so anything older than a day
+                        // falls through and gets pulled again
                         mAvatarFetched.add( key );
                         return;
                 }
@@ -1135,65 +1261,6 @@ public class XashActivity extends SDLActivity {
                 } finally {
                         if( c != null ) try { c.disconnect(); } catch( Throwable ignored ) {}
                 }
-        }
-
-        // ------------------------------------------------------------------
-        // spec banner
-        //
-        // servers point clients at an image with client_cmd
-        // cl_spec_banner <url>; we keep it in media/spec_banner.png with a
-        // "<w> <h>" companion so the client dll draws the right aspect
-        // ------------------------------------------------------------------
-
-        public void specBannerFetch( final String url ) {
-                if( url == null || url.isEmpty()) return;
-
-                Thread t = new Thread( new Runnable() {
-                        @Override public void run() {
-                                try {
-                                        File dir = avatarDir();
-                                        if( dir == null ) return;
-
-                                        File img = new File( dir.getParentFile(), "spec_banner.png" );
-                                        File meta = new File( dir.getParentFile(), "spec_banner.txt" );
-                                        File marker = new File( dir.getParentFile(), "spec_banner.url" );
-
-                                        // same url as last time -> the image is current
-                                        if( img.isFile() && meta.isFile() && marker.isFile() )
-                                        {
-                                                java.io.FileInputStream min = new java.io.FileInputStream( marker );
-                                                byte[] mb = new byte[( int )marker.length()];
-                                                int got = min.read( mb );
-                                                min.close();
-                                                if( got > 0 && url.contentEquals( new String( mb, 0, got, "UTF-8" ).trim() ))
-                                                        return;
-                                        }
-
-                                        byte[] data = httpGetBytes( url );
-                                        if( data == null || data.length < 64 ) return;
-
-                                        Bitmap bmp = BitmapFactory.decodeByteArray( data, 0, data.length );
-                                        if( bmp == null ) return;
-
-                                        java.io.FileOutputStream fos = new java.io.FileOutputStream( img );
-                                        bmp.compress( Bitmap.CompressFormat.PNG, 90, fos );
-                                        fos.close();
-
-                                        java.io.FileWriter mw = new java.io.FileWriter( meta );
-                                        mw.write( bmp.getWidth() + " " + bmp.getHeight() );
-                                        mw.close();
-
-                                        java.io.FileWriter uw = new java.io.FileWriter( marker );
-                                        uw.write( url );
-                                        uw.close();
-                                        consolePrintf( "Spec banner: saved " + bmp.getWidth() + "x" + bmp.getHeight() );
-                                } catch( Throwable t ) {
-                                        Log.w( TAG, "spec banner fetch failed", t );
-                                }
-                        }
-                });
-                t.setDaemon( true );
-                t.start();
         }
 
         /** First <tag>...</tag> value of a small xml page, CDATA stripped. */
@@ -1337,12 +1404,6 @@ public class XashActivity extends SDLActivity {
                 mLoadingOverlay = overlay;
                 addContentView( overlay, new ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT ));
-
-                // reconnecting to a server we know: banner goes up at once
-                String saved = getSharedPreferences( "loading_banners", MODE_PRIVATE )
-                        .getString( mLoadingServer, null );
-                if( saved != null && !saved.isEmpty() )
-                        loadLoadingBanner( saved, false );
         }
 
         private void hideLoadingOverlay() {
@@ -1362,60 +1423,292 @@ public class XashActivity extends SDLActivity {
                 }
         }
 
-        /** Downloads the server banner off the UI thread and decodes it
-         *  downsampled; the footer keeps its aspect and stays hidden
-         *  until a bitmap is actually ready. */
-        private void loadLoadingBanner( final String url, final boolean remember ) {
-                if( url == null || url.isEmpty()) return;
+        // ------------------------------------------------------------------
+        // TAB avatars
+        //
+        // the engine forwards every steamid it sees in player userinfo;
+        // we resolve the steam avatar once per id (public community
+        // profile xml, no key needed) and drop a png into
+        // media/avatars/ where the scoreboard picks it up
+        // ------------------------------------------------------------------
+
+        private final java.util.Set<Long> mAvatarFetched =
+                java.util.Collections.synchronizedSet( new java.util.HashSet<Long>() );
+
+        private static final Object AVATAR_RATE_LOCK = new Object();
+        private static long sAvatarLastFetch;
+
+        public void avatarFetch( final long steamid64 ) {
+                Long key = steamid64;
+                if( mAvatarFetched.contains( key )) return;
+
+                final long account = steamid64 - 76561197960265728L;
+                if( account <= 0 || account > 0xFFFFFFFFL ) return;
+
+                final File dir = avatarDir();
+                if( dir == null ) {
+                        mAvatarFetched.add( key );
+                        return;
+                }
+
+                final File out = new File( dir, "av_" + account + ".png" );
+                long stale = System.currentTimeMillis() - 24L * 60 * 60 * 1000;
+                if( out.isFile() && out.length() > 0 && out.lastModified() > stale ) {
+                        // fresh copy on disk from an earlier session; steam
+                        // avatars change, so anything older than a day
+                        // falls through and gets pulled again
+                        mAvatarFetched.add( key );
+                        return;
+                }
+
+                mAvatarFetched.add( key );
 
                 Thread t = new Thread( new Runnable() {
                         @Override public void run() {
                                 try {
-                                        java.net.HttpURLConnection c = ( java.net.HttpURLConnection )
-                                                new java.net.URL( url ).openConnection();
-                                        c.setConnectTimeout( 8000 );
-                                        c.setReadTimeout( 8000 );
-                                        c.setInstanceFollowRedirects( true );
-                                        java.io.InputStream in = c.getInputStream();
-                                        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
-                                        byte[] chunk = new byte[16384];
-                                        int n;
-                                        while(( n = in.read( chunk )) > 0 ) {
-                                                buf.write( chunk, 0, n );
-                                                if( buf.size() > 4 * 1024 * 1024 ) break; // banner cap
+                                        // be gentle with the community endpoint:
+                                        // one request per 300ms across all players
+                                        synchronized( AVATAR_RATE_LOCK ) {
+                                                long now = System.currentTimeMillis();
+                                                long wait = 300 - ( now - sAvatarLastFetch );
+                                                if( wait > 0 ) Thread.sleep( wait );
+                                                sAvatarLastFetch = System.currentTimeMillis();
                                         }
-                                        in.close();
 
-                                        byte[] data = buf.toByteArray();
-                                        BitmapFactory.Options bounds = new BitmapFactory.Options();
-                                        bounds.inJustDecodeBounds = true;
-                                        BitmapFactory.decodeByteArray( data, 0, data.length, bounds );
+                                        String xml = httpGetString(
+                                                "https://steamcommunity.com/profiles/" + steamid64 + "/?xml=1" );
+                                        if( xml == null ) return;
 
-                                        BitmapFactory.Options opts = new BitmapFactory.Options();
-                                        opts.inSampleSize = 1;
-                                        while( bounds.outWidth / ( opts.inSampleSize * 2 ) >= 640 )
-                                                opts.inSampleSize *= 2;
+                                        String url = extractXmlTag( xml, "avatarFull" );
+                                        if( url == null || url.isEmpty()) return;
 
-                                        final Bitmap bmp = BitmapFactory.decodeByteArray( data, 0, data.length, opts );
+                                        byte[] img = httpGetBytes( url );
+                                        if( img == null || img.length < 64 ) return;
+
+                                        Bitmap bmp = BitmapFactory.decodeByteArray( img, 0, img.length );
                                         if( bmp == null ) return;
 
-                                        runOnUiThread( new Runnable() {
-                                                @Override public void run() {
-                                                        if( mLoadingOverlay == null || mLoadingBanner == null ) return;
-                                                        mLoadingBanner.setImageBitmap( bmp );
-                                                        mLoadingBanner.setVisibility( View.VISIBLE );
-                                                }
-                                        });
-
-                                        if( remember && !mLoadingServer.isEmpty() )
-                                                getSharedPreferences( "loading_banners", MODE_PRIVATE )
-                                                        .edit().putString( mLoadingServer, url ).apply();
+                                        java.io.FileOutputStream fos = new java.io.FileOutputStream( out );
+                                        bmp.compress( Bitmap.CompressFormat.PNG, 90, fos );
+                                        fos.close();
+                                        consolePrintf( "Avatar: saved steam avatar for account " + account );
                                 } catch( Throwable t ) {
-                                        Log.w( TAG, "loading banner download failed: " + url, t );
+                                        Log.w( TAG, "avatar fetch failed", t );
                                 }
                         }
                 });
                 t.setDaemon( true );
                 t.start();
+        }
+
+        private File avatarDir() {
+                try {
+                        String base = mMotdBaseDir != null ? mMotdBaseDir
+                                : Environment.getExternalStorageDirectory().getAbsolutePath() + "/xash";
+                        String game = mMotdGameDir != null ? mMotdGameDir : "valve";
+                        File dir = new File( base, game + "/media/avatars" );
+                        if( !dir.isDirectory() && !dir.mkdirs() && !dir.isDirectory())
+                                return null;
+                        return dir;
+                } catch( Throwable t ) {
+                        return null;
+                }
+        }
+
+        private String httpGetString( String url ) {
+                byte[] data = httpGetBytes( url );
+                if( data == null ) return null;
+                try {
+                        return new String( data, "UTF-8" );
+                } catch( Throwable t ) {
+                        return null;
+                }
+        }
+
+        private byte[] httpGetBytes( String url ) {
+                java.net.HttpURLConnection c = null;
+                try {
+                        c = ( java.net.HttpURLConnection ) new java.net.URL( url ).openConnection();
+                        c.setConnectTimeout( 8000 );
+                        c.setReadTimeout( 10000 );
+                        c.setInstanceFollowRedirects( true );
+                        c.setRequestProperty( "User-Agent", "Mozilla/5.0 (Xash3D Android)" );
+
+                        java.io.InputStream in = c.getInputStream();
+                        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+                        byte[] chunk = new byte[16384];
+                        int n;
+                        while(( n = in.read( chunk )) > 0 ) {
+                                buf.write( chunk, 0, n );
+                                if( buf.size() > 8 * 1024 * 1024 ) break;
+                        }
+                        in.close();
+                        return buf.toByteArray();
+                } catch( Throwable t ) {
+                        Log.w( TAG, "http get failed: " + url, t );
+                        return null;
+                } finally {
+                        if( c != null ) try { c.disconnect(); } catch( Throwable ignored ) {}
+                }
+        }
+
+        /** First <tag>...</tag> value of a small xml page, CDATA stripped. */
+        private static String extractXmlTag( String xml, String tag ) {
+                String open = "<" + tag + ">";
+                String close = "</" + tag + ">";
+                int a = xml.indexOf( open );
+                int b = xml.indexOf( close, a >= 0 ? a : 0 );
+                if( a < 0 || b < 0 ) return null;
+
+                String v = xml.substring( a + open.length(), b ).trim();
+                if( v.startsWith( "<![CDATA[" ) && v.endsWith( "]]>" ))
+                        v = v.substring( 9, v.length() - 3 ).trim();
+                return v;
+        }
+
+        private Drawable makeLoadingPanelBackground() {
+                GradientDrawable d = new GradientDrawable();
+                d.setColor( LOADING_PANEL_BG );
+                d.setStroke( Math.max( 1, dp( 1 )), LOADING_PANEL_BORDER );
+                return d;
+        }
+
+        private Drawable makeLoadingButtonBackground() {
+                GradientDrawable normal = new GradientDrawable();
+                normal.setColor( 0xFF4A5240 );
+                normal.setStroke( Math.max( 1, dp( 1 )), 0xFFB4B8BC );
+
+                GradientDrawable pressed = new GradientDrawable();
+                pressed.setColor( 0xFF2C3227 );
+                pressed.setStroke( Math.max( 1, dp( 1 )), LOADING_TITLE );
+
+                StateListDrawable sld = new StateListDrawable();
+                sld.addState( new int[] { android.R.attr.state_pressed }, pressed );
+                sld.addState( new int[] { -android.R.attr.state_pressed }, normal );
+                return sld;
+        }
+
+        private void showLoadingOnUiThread( String serverAddr ) {
+                if( mLoadingOverlay != null )
+                        hideLoadingOverlay();
+
+                mLoadingServer = serverAddr != null ? serverAddr : "";
+
+                DisplayMetrics dm = getResources().getDisplayMetrics();
+                int screenW = dm.widthPixels;
+
+                FrameLayout overlay = new FrameLayout( this );
+                overlay.setBackgroundColor( LOADING_SHADE );
+
+                LinearLayout panel = new LinearLayout( this );
+                panel.setOrientation( LinearLayout.VERTICAL );
+                panel.setBackground( makeLoadingPanelBackground() );
+                int pad = dp( 14 );
+                panel.setPadding( pad, pad, pad, pad );
+
+                FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
+                        Math.round( screenW * 0.78f ), ViewGroup.LayoutParams.WRAP_CONTENT );
+                panelLp.gravity = Gravity.CENTER;
+                overlay.addView( panel, panelLp );
+
+                // title row: the CS mark + Loading...
+                LinearLayout titleRow = new LinearLayout( this );
+                titleRow.setGravity( Gravity.CENTER_VERTICAL );
+
+                ImageView logo = new ImageView( this );
+                logo.setImageResource( R.drawable.cs_logo );
+                logo.setScaleType( ImageView.ScaleType.FIT_CENTER );
+                int logoSize = dp( 18 );
+                LinearLayout.LayoutParams logoLp = new LinearLayout.LayoutParams( logoSize, logoSize );
+                logoLp.rightMargin = dp( 8 );
+                titleRow.addView( logo, logoLp );
+
+                TextView title = new TextView( this );
+                title.setText( "Loading..." );
+                title.setTextColor( LOADING_TITLE );
+                title.setTextSize( TypedValue.COMPLEX_UNIT_SP, 17 );
+                title.setTypeface( Typeface.DEFAULT_BOLD );
+                titleRow.addView( title, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
+
+                panel.addView( titleRow, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
+
+                LoadingBar bar = new LoadingBar( this );
+                LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp( 18 ));
+                barLp.topMargin = dp( 12 );
+                panel.addView( bar, barLp );
+                mLoadingBar = bar;
+
+                TextView status = new TextView( this );
+                status.setText( mLoadingServer.isEmpty() ? "Loading..."
+                        : "Connecting to " + mLoadingServer + "..." );
+                status.setTextColor( LOADING_TEXT );
+                status.setTextSize( TypedValue.COMPLEX_UNIT_SP, 13 );
+                status.setSingleLine( false );
+                LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                statusLp.topMargin = dp( 8 );
+                panel.addView( status, statusLp );
+                mLoadingStatus = status;
+
+                ImageView banner = new ImageView( this );
+                banner.setScaleType( ImageView.ScaleType.FIT_CENTER );
+                banner.setAdjustViewBounds( true );
+                banner.setVisibility( View.GONE );
+                LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                bannerLp.topMargin = dp( 10 );
+                panel.addView( banner, bannerLp );
+                mLoadingBanner = banner;
+
+                LinearLayout cancelRow = new LinearLayout( this );
+                cancelRow.setGravity( Gravity.END );
+
+                Button cancel = new Button( this );
+                cancel.setText( "Cancel" );
+                cancel.setAllCaps( false );
+                cancel.setTextColor( LOADING_TITLE );
+                cancel.setTextSize( TypedValue.COMPLEX_UNIT_SP, 14 );
+                cancel.setBackground( makeLoadingButtonBackground() );
+                cancel.setStateListAnimator( null );
+                cancel.setElevation( 0f );
+                cancel.setMinHeight( 0 );
+                cancel.setPadding( dp( 12 ), 0, dp( 12 ), 0 );
+                cancel.setOnClickListener( new View.OnClickListener() {
+                        @Override public void onClick( View v ) {
+                                hideLoadingOverlay();
+                                nativeLoadingCancelled();
+                        }
+                });
+                cancelRow.addView( cancel, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, dp( 32 )));
+
+                LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                cancelLp.topMargin = dp( 12 );
+                panel.addView( cancelRow, cancelLp );
+
+                mLoadingOverlay = overlay;
+                addContentView( overlay, new ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT ));
+        }
+
+        private void hideLoadingOverlay() {
+                if( mLoadingOverlay == null ) return;
+
+                FrameLayout overlay = mLoadingOverlay;
+                mLoadingOverlay = null;
+                mLoadingBar = null;
+                mLoadingStatus = null;
+                mLoadingBanner = null;
+
+                try {
+                        ViewGroup parent = ( ViewGroup )overlay.getParent();
+                        if( parent != null ) parent.removeView( overlay );
+                } catch( Throwable t ) {
+                        Log.w( TAG, "loading overlay remove failed", t );
+                }
         }
 }

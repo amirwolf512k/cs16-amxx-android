@@ -719,9 +719,12 @@ void CHudSpectator::DirectorMessage( int iSize, void *pbuf )
 		break;
 
 	case DRC_CMD_BANNER:
-		// gEngfuncs.Con_DPrintf("GUI: Banner %s\n",reader.ReadString() ); // name of banner tga eg gfx/temp/7454562234563475.tga
-		//gViewPort->m_pSpectatorPanel->m_TopBanner->LoadImage( reader.ReadString() );
-		//gViewPort->UpdateSpectatorPanel();
+		// the server hands us its banner tga (shipped as a generic
+		// resource). The PC client hung it in the spectator panel;
+		// ours draws it from CHudSpecBanner while dead or spectating.
+		string = reader.ReadString();
+		gEngfuncs.Con_DPrintf( "GUI: Banner %s\n", string );
+		gHUD.m_SpecBanner.SetBannerFile( string );
 		break;
 
 		/*case DRC_CMD_FADE:

@@ -366,11 +366,14 @@ public:
 	int VidInit( void );
 	int Draw( float flTime );
 
+	// the tga the server named in DRC_CMD_BANNER (hud_spectator)
+	void SetBannerFile( const char *file );
+
 private:
 	struct model_s *m_pBanner;
 	float m_flNextProbe;
+	char m_szBannerFile[256];
 	char m_szLoadedFrom[256];
-	cvar_t *cl_spec_banner;
 };
 
 class CHudScoreboard: public CHudBase

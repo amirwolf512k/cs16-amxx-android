@@ -37,10 +37,9 @@ struct jnimethods_s
         jmethodID showMOTD; // sandboxed HTML MOTD dialog
         jmethodID loadingShow; // CS 1.6 style loading window
         jmethodID loadingStatus;
-        jmethodID loadingBanner;
+        jmethodID loadingBannerFile;
         jmethodID loadingHide;
         jmethodID avatarFetch; // steam avatar for the scoreboard
-        jmethodID specBanner; // spec-mode banner image
 } jni;
 
 // dialog visibility state so the client dll can
@@ -67,37 +66,6 @@ static qboolean LoadingURLIsSafe( const char *url )
         }
 
         return true;
-}
-
-/*
-========================
-Android_SpecBannerFetch
-
-the server set cl_spec_banner to an image url (through client_cmd);
-hand it to the activity so media/spec_banner.png appears for the
-client dll to draw in the spec corner.
-========================
-*/
-void Android_SpecBannerFetch( const char *url )
-{
-        jstring jstr;
-
-        if( !jni.env || !jni.activity || !jni.specBanner )
-                return;
-
-        if( !LoadingURLIsSafe( url ))
-                return;
-
-        jstr = (*jni.env)->NewStringUTF( jni.env, url );
-
-        if( !jstr )
-                return;
-
-        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.specBanner, jstr );
-        (*jni.env)->DeleteLocalRef( jni.env, jstr );
-
-        if( (*jni.env)->ExceptionCheck( jni.env ))
-                (*jni.env)->ExceptionClear( jni.env );
 }
 
 /*
@@ -156,27 +124,28 @@ void Android_LoadingStatus( const char *text, float percent )
 
 /*
 ========================
-Android_LoadingBanner
+Android_LoadingBannerFile
 
-hand the server ad image url to the loading window.
+the director banner (game-relative path, downloaded with the other
+resources) for the loading window footer.
 ========================
 */
-void Android_LoadingBanner( const char *url )
+void Android_LoadingBannerFile( const char *path )
 {
         jstring jstr;
 
-        if( !jni.env || !jni.activity || !jni.loadingBanner )
+        if( !jni.env || !jni.activity || !jni.loadingBannerFile )
                 return;
 
-        if( !LoadingURLIsSafe( url ))
+        if( !LoadingURLIsSafe( path ))
                 return;
 
-        jstr = (*jni.env)->NewStringUTF( jni.env, url );
+        jstr = (*jni.env)->NewStringUTF( jni.env, path );
 
         if( !jstr )
                 return;
 
-        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.loadingBanner, jstr );
+        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.loadingBannerFile, jstr );
         (*jni.env)->DeleteLocalRef( jni.env, jstr );
 
         if( (*jni.env)->ExceptionCheck( jni.env ))
@@ -244,10 +213,9 @@ void Android_Init( void )
         jni.showMOTD = (*jni.env)->GetMethodID( jni.env, jni.actcls, "showMOTD", "([B[B)Z" );
         jni.loadingShow = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingShow", "(Ljava/lang/String;)V" );
         jni.loadingStatus = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingStatus", "(Ljava/lang/String;F)V" );
-        jni.loadingBanner = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingBanner", "(Ljava/lang/String;)V" );
+        jni.loadingBannerFile = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingBannerFile", "(Ljava/lang/String;)V" );
         jni.loadingHide = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingHide", "()V" );
         jni.avatarFetch = (*jni.env)->GetMethodID( jni.env, jni.actcls, "avatarFetch", "(J)V" );
-        jni.specBanner = (*jni.env)->GetMethodID( jni.env, jni.actcls, "specBannerFetch", "(Ljava/lang/String;)V" );
         // a failed lookup leaves a pending exception; clear it so
         // nothing downstream (filesystem assets, SDL) trips over it
         if( (*jni.env)->ExceptionCheck( jni.env ))

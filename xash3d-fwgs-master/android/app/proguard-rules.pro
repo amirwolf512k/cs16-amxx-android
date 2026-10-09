@@ -38,10 +38,9 @@
     # JNI only -- without keep rules R8 strips these on release builds
     void loadingShow(java.lang.String);
     void loadingStatus(java.lang.String, float);
-    void loadingBanner(java.lang.String);
+    void loadingBannerFile(java.lang.String);
     void loadingHide();
     void avatarFetch(long);
-    void specBannerFetch(java.lang.String);
     void nativeMOTDClosed();
 }
 

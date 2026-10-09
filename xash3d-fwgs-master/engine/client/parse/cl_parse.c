@@ -2003,6 +2003,8 @@ spectator message (director)
 sended from game.dll
 ==============
 */
+#define DRC_CMD_BANNER	9	// hltv.h: banner file name for the HLTV gui
+
 static void CL_ParseDirector( sizebuf_t *msg )
 {
 	int	iSize = MSG_ReadByte( msg );
@@ -2011,6 +2013,27 @@ static void CL_ParseDirector( sizebuf_t *msg )
 	// parse user message into buffer
 	MSG_ReadBytes( msg, pbuf, sizeof( pbuf ), iSize );
 	clgame.dllFuncs.pfnDirectorMessage( iSize, pbuf );
+
+#if XASH_ANDROID
+	// DRC_CMD_BANNER is how servers hand clients their banner picture
+	// (a tga shipped as a generic resource). While the loading window is
+	// up the image goes to its footer, like the PC loading dialog did;
+	// after the map loads the client dll draws it in the spec corner.
+	if( iSize > 1 && pbuf[0] == DRC_CMD_BANNER )
+	{
+		char banner[256];
+		int len = iSize - 1;
+
+		if( len > ( int )sizeof( banner ) - 1 )
+			len = sizeof( banner ) - 1;
+
+		memcpy( banner, pbuf + 1, len );
+		banner[len] = 0;
+
+		if( !COM_StringEmpty( banner ))
+			Android_LoadingBannerFile( banner );
+	}
+#endif
 }
 
 /*

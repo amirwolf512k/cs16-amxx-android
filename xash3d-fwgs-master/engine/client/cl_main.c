@@ -100,7 +100,6 @@ CVAR_DEFINE_AUTO( rate, "25000", FCVAR_USERINFO|FCVAR_ARCHIVE|FCVAR_FILTERABLE, 
 
 CVAR_DEFINE_AUTO( cl_ticket_generator, "revemu2013", FCVAR_ARCHIVE|FCVAR_PRIVILEGED, "you wouldn't steal a car" );
 CVAR_DEFINE_AUTO( cl_steamid, "", FCVAR_ARCHIVE|FCVAR_PRIVILEGED, "steady SteamID for goldsrc servers, accepted forms: STEAM_0:X:Y, [U:1:Z], steamid64 or plain account number" );
-CVAR_DEFINE_AUTO( cl_spec_banner, "", FCVAR_ARCHIVE, "image drawn while dead or spectating; servers set it with client_cmd, http urls are downloaded" );
 static CVAR_DEFINE_AUTO( cl_log_outofband, "0", FCVAR_ARCHIVE, "log out of band messages, can be useful for server admins and for engine debugging" );
 static CVAR_DEFINE_AUTO( cl_autorecord, "0", 0, "automatically start recording a demo after joining the server" );
 
@@ -1181,11 +1180,15 @@ static void CL_GetCDKey( char *protinfo, size_t protinfosize )
 	byte hash[16] = { 0 };
 	MD5Context_t ctx = { 0 };
 	char key[64];
+	netadr_t adr = { .type = NA_LOOPBACK, };
 
-	int keylength = Q_snprintf( key, sizeof( key ), "%u", COM_RandomLong( 0, 0x7ffffffe ));
+	// keyed off the device id, not the clock: the cdkey used to roll a
+	// fresh random every connect, which made our identity differ from
+	// one server to the next
+	ID_GetMD5ForAddress( key, adr, sizeof( key ));
 
 	MD5Init( &ctx );
-	MD5Update( &ctx, key, keylength );
+	MD5Update( &ctx, key, Q_strlen( key ));
 	MD5Final( hash, &ctx );
 
 	Q_strnlwr( MD5_Print( hash ), key, sizeof( key ));
@@ -1227,10 +1230,14 @@ static qboolean CL_ParseSteamIDAccount( const char *s, uint32_t *account )
 
 	v = strtoull( s, NULL, 10 );
 
-	// a steamid64 sits in the account universe, strip the base to get
-	// the account number the old STEAM_0:X:Y spelling shows
+	// only a genuine account-universe steamid64 counts as real; other
+	// long numbers are typos, not ids
 	if( v > 76561197960265728ULL )
+	{
+		if( v > 76561197960265728ULL + 0xFFFFFFFFULL )
+			return false;
 		v -= 76561197960265728ULL;
+	}
 
 	if( v == 0 || v > 0xFFFFFFFFULL )
 		return false;
@@ -1264,6 +1271,7 @@ static void CL_WriteSteamTicket( sizebuf_t *send )
 	// steam avatar lookups are keyed on
 	if( CL_ParseSteamIDAccount( cl_steamid.string, &account ))
 	{
+		Con_Printf( "steamid: pinning STEAM_0:%u:%u from cl_steamid\n", account % 2, account / 2 );
 		i = GenerateRevEmu2013( buf, key, ( int )account );
 
 		// the spoofing search can fail on rare ids, then the derived
@@ -3843,7 +3851,6 @@ static void CL_InitLocal( void )
 
 	Cvar_RegisterVariable( &cl_ticket_generator );
 	Cvar_RegisterVariable( &cl_steamid );
-	Cvar_RegisterVariable( &cl_spec_banner );
 	Cvar_RegisterVariable( &cl_log_outofband );
 	Cvar_RegisterVariable( &cl_autorecord );
 
@@ -4049,21 +4056,6 @@ void Host_ClientBegin( void )
 	// here is where running "disconnect" is safe
 	if( Android_LoadingCancelled( ))
 		Cbuf_AddText( "disconnect\n" );
-
-	{
-		// cl_spec_banner points at an image; http urls get fetched by
-		// the platform layer so the client dll can always load a plain
-		// file. Only react when the value actually changed.
-		static char last_banner[512];
-
-		if( strcmp( last_banner, cl_spec_banner.string ))
-		{
-			Q_strncpy( last_banner, cl_spec_banner.string, sizeof( last_banner ));
-
-			if( !Q_strnicmp( cl_spec_banner.string, "http://", 7 ) || !Q_strnicmp( cl_spec_banner.string, "https://", 8 ))
-				Android_SpecBannerFetch( cl_spec_banner.string );
-		}
-	}
 #endif
 
 	// if client is not active, do nothing

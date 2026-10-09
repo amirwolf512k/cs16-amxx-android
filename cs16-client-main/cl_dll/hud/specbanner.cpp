@@ -15,13 +15,11 @@
 //
 // specbanner.cpp
 //
-// the server banner shown while you are dead or spectating (top left
-// corner), the way the popular russian/turkish servers greet waiting
-// players. The server points clients at an image with
-//   client_cmd( id, "cl_spec_banner http://host/banner.png" )
-// the engine pulls http urls down into media/spec_banner.png (with a
-// "<w> <h>" companion file so the aspect survives), local game paths
-// load as-is. Nothing is drawn while you are alive.
+// the standard DRC_CMD_BANNER picture: servers ship a tga as a generic
+// resource (precache_generic) and name it through svc_director; the PC
+// client hung it in the spectator panel top-left, we draw it in the same
+// corner while you are dead or spectating. The Android loading window
+// shows the same file in its footer while the map loads.
 //
 #include <string.h>
 #include <stdio.h>
@@ -31,87 +29,109 @@
 #include "draw_util.h"
 #include "triangleapi.h"
 
+void CHudSpecBanner::SetBannerFile( const char *file )
+{
+	if( !file )
+	{
+		m_szBannerFile[0] = 0;
+		return;
+	}
+
+	strncpy( m_szBannerFile, file, sizeof( m_szBannerFile ) - 1 );
+	m_szBannerFile[sizeof( m_szBannerFile ) - 1] = 0;
+}
+
 int CHudSpecBanner::Init( void )
 {
 	gHUD.AddHudElem( this );
 
 	m_pBanner = NULL;
 	m_flNextProbe = 0.0f;
+	m_szBannerFile[0] = 0;
 	m_szLoadedFrom[0] = 0;
-
-	cl_spec_banner = CVAR_CREATE( "cl_spec_banner", "", FCVAR_ARCHIVE );
 
 	return 1;
 }
 
 int CHudSpecBanner::VidInit( void )
 {
-	// the probe timer rides on hud time, restart it
+	// probe timer rides on hud time
 	m_flNextProbe = 0.0f;
 
 	return 1;
 }
 
+// tga header: 18 bytes, width at 12, height at 14 (LE u16)
+static bool Banner_TgaSize( const char *path, int *w, int *h )
+{
+	byte *file = ( byte * )gEngfuncs.COM_LoadFile( ( char * )path, 5, NULL );
+
+	if( !file )
+		return false;
+
+	bool ok = false;
+
+	if( file[1] == 0 && ( file[2] == 2 || file[2] == 10 ) && ( file[16] == 24 || file[16] == 32 ))
+	{
+		int iw = file[12] | ( file[13] << 8 );
+		int ih = file[14] | ( file[15] << 8 );
+
+		if( iw > 0 && ih > 0 )
+		{
+			*w = iw;
+			*h = ih;
+			ok = true;
+		}
+	}
+
+	gEngfuncs.COM_FreeFile( file );
+	return ok;
+}
+
 int CHudSpecBanner::Draw( float flTime )
 {
-	const char *src;
-
-	if( !cl_spec_banner )
-		return 0;
-
-	src = cl_spec_banner->string;
-	if( !src[0] )
-		return 0;
-
 	// waiting players only: dead or on the spectator queue
 	if( !g_iUser1 && ( gHUD.m_Scoreboard.m_iPlayerNum <= 0 || !g_PlayerExtraInfo[gHUD.m_Scoreboard.m_iPlayerNum].dead ))
 		return 0;
 
-	if( !m_pBanner || strcmp( m_szLoadedFrom, src ))
+	if( !m_szBannerFile[0] )
+		return 0;
+
+	if( !m_pBanner || strcmp( m_szLoadedFrom, m_szBannerFile ))
 	{
 		if( flTime < m_flNextProbe )
 			return 0;
 
 		m_flNextProbe = flTime + 2.0f;
 
-		// http urls arrive pre-downloaded by the engine; anything else
-		// is treated as a game path
-		if( !strnicmp( src, "http://", 7 ) || !strnicmp( src, "https://", 8 ))
-			m_pBanner = gEngfuncs.LoadMapSprite( "media/spec_banner.png" );
-		else
-			m_pBanner = gEngfuncs.LoadMapSprite( src );
+		// the tga comes through the resource download, so the first
+		// frames after join may not have it yet
+		m_pBanner = gEngfuncs.LoadMapSprite( m_szBannerFile );
 
 		if( m_pBanner )
-			strncpy( m_szLoadedFrom, src, sizeof( m_szLoadedFrom ) - 1 );
+			strncpy( m_szLoadedFrom, m_szBannerFile, sizeof( m_szLoadedFrom ) - 1 );
 		m_szLoadedFrom[sizeof( m_szLoadedFrom ) - 1] = 0;
 	}
 
 	if( !m_pBanner )
 		return 0;
 
-	// fit into the top left corner, keep the aspect when it is known
+	// fit the top left corner, keep the tga aspect
 	float maxW = ScreenWidth * 0.28f;
 	float maxH = ScreenHeight * 0.20f;
-	float w = maxW, h = maxW / 4.0f; // classic banner ratio as fallback
+	float w = maxW, h = maxW / 4.0f;
+	int iw, ih;
 
-	char *meta = ( char * )gEngfuncs.COM_LoadFile( "media/spec_banner.txt", 5, NULL );
-	if( meta )
+	if( Banner_TgaSize( m_szBannerFile, &iw, &ih ))
 	{
-		int iw = 0, ih = 0;
+		w = maxW;
+		h = w * ih / iw;
 
-		if( sscanf( meta, "%d %d", &iw, &ih ) == 2 && iw > 0 && ih > 0 )
+		if( h > maxH )
 		{
-			w = maxW;
-			h = w * ih / iw;
-
-			if( h > maxH )
-			{
-				h = maxH;
-				w = h * iw / ih;
-			}
+			h = maxH;
+			w = h * iw / ih;
 		}
-
-		gEngfuncs.COM_FreeFile( meta );
 	}
 
 	float x0 = 8.0f;
