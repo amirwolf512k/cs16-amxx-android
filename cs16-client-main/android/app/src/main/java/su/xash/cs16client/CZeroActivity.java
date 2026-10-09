@@ -1,38 +1,15 @@
 package su.xash.cs16client;
 
-import android.app.Activity;
-import android.content.ComponentName;
-import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.net.Uri;
-import android.os.Bundle;
-
-public class CZeroActivity extends Activity {
+/**
+ * The CSCZClient launcher icon. Condition Zero content lives in the
+ * czero/ game dir, so the only thing this entry changes is which dir
+ * the engine gets -- the storage permission flow, the addons install
+ * (metamod + AMX Mod X into czero/) and the launch itself are all
+ * inherited from MainActivity.
+ */
+public class CZeroActivity extends MainActivity {
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        String pkg = "su.xash.engine.test";
-
-        try {
-            getPackageManager().getPackageInfo(pkg, 0);
-        } catch (PackageManager.NameNotFoundException e) {
-            try {
-                pkg = "su.xash.engine";
-                getPackageManager().getPackageInfo(pkg, 0);
-            } catch (PackageManager.NameNotFoundException ex) {
-                startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/FWGS/xash3d-fwgs/releases/tag/continuous")).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
-                finish();
-                return;
-            }
-        }
-
-        startActivity(new Intent().setComponent(new ComponentName(pkg, "su.xash.engine.XashActivity"))
-                .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                .putExtra("gamedir", "czero")
-                .putExtra("gamelibdir", getApplicationInfo().nativeLibraryDir)
-                .putExtra("argv", "-dev 2 -log")  // no -dll @yapb -- YaPB loads via metamod plugins.ini
-                .putExtra("package", getPackageName()));
-        finish();
+    protected String pickGameDir() {
+        return "czero";
     }
 }

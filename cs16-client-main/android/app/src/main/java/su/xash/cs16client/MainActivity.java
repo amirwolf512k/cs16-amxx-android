@@ -1,9 +1,7 @@
 package su.xash.cs16client;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.ComponentName;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
@@ -90,9 +88,9 @@ public class MainActivity extends Activity {
                 launchEngine();
         }
 
-        // fallback for single-game installs; when both cstrike and czero
-        // are on the disk, askWhichGame lets the player choose instead
-        private String pickGameDir() {
+        // the game dir this launcher entry runs: cstrike by default;
+        // CZeroActivity (the CSCZClient icon) overrides it to czero
+        protected String pickGameDir() {
                 if( new File( getXashDir(), "cstrike/liblist.gam" ).isFile())
                         return "cstrike";
 
@@ -450,36 +448,7 @@ public class MainActivity extends Activity {
                         }
                 }
 
-                // a Condition Zero install keeps czero/ next to cstrike/ --
-                // when both are there, ask which one to run (the addon
-                // pack is already extracted into both game dirs)
-                if( new File( getXashDir(), "cstrike/liblist.gam" ).isFile()
-                        && hasCzero()) {
-                        askWhichGame( pkg );
-                        return;
-                }
-
                 startEngine( pkg, pickGameDir() );
-        }
-
-        private void askWhichGame( final String pkg ) {
-                new AlertDialog.Builder( this )
-                        .setTitle( "Which game?" )
-                        .setMessage( "Counter-Strike and Condition Zero are both installed. Which one do you want to play?" )
-                        .setPositiveButton( "Counter-Strike", new DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick( DialogInterface d, int w ) {
-                                        startEngine( pkg, "cstrike" );
-                                }
-                        } )
-                        .setNegativeButton( "Condition Zero", new DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick( DialogInterface d, int w ) {
-                                        startEngine( pkg, "czero" );
-                                }
-                        } )
-                        .setCancelable( false )
-                        .show();
         }
 
         private void startEngine( String pkg, String gameDir ) {
