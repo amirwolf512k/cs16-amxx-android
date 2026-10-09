@@ -35,7 +35,6 @@ struct jnimethods_s
         jmethodID getAndroidID;
         jmethodID saveAndroidID;
         jmethodID showMOTD; // sandboxed HTML MOTD dialog
-        jmethodID openURL; // opens http(s) links in the system browser
 } jni;
 
 // dialog visibility state so the client dll can
@@ -56,8 +55,6 @@ void Android_Init( void )
         // (title, html) both as raw byte arrays, so a malformed
         // server string can never abort NewStringUTF
         jni.showMOTD = (*jni.env)->GetMethodID( jni.env, jni.actcls, "showMOTD", "([B[B)Z" );
-        jni.openURL = (*jni.env)->GetMethodID( jni.env, jni.actcls, "openExternalURL", "(Ljava/lang/String;)Z" );
-
         // a failed lookup leaves a pending exception; clear it so
         // nothing downstream (filesystem assets, SDL) trips over it
         if( (*jni.env)->ExceptionCheck( jni.env ))
@@ -205,43 +202,6 @@ qboolean Android_IsMOTDDialogOpen( void )
 void Android_MOTDDialogClosed( void )
 {
         g_motd_dialog_open = false;
-}
-
-/*
-========================
-Android_OpenURL
-
-hand a http(s) link to the system browser through
-the activity. Server MOTDs that are bare links or iframe-wrapped auth
-pages (next21-style client checks) must complete in a real browser
-session, the sandboxed WebView can't finish them. The caller checks
-the scheme before us; we only guard the JNI plumbing here.
-========================
-*/
-qboolean Android_OpenURL( const char *url )
-{
-        jstring jstr;
-        jboolean ok;
-
-        if( !jni.env || !jni.activity || !jni.openURL || COM_StringEmpty( url ))
-                return false;
-
-        jstr = (*jni.env)->NewStringUTF( jni.env, url );
-
-        if( !jstr )
-                return false;
-
-        ok = (*jni.env)->CallBooleanMethod( jni.env, jni.activity, jni.openURL, jstr );
-        (*jni.env)->DeleteLocalRef( jni.env, jstr );
-
-        // openURL catches Throwable internally, never leave one pending
-        if( (*jni.env)->ExceptionCheck( jni.env ))
-        {
-                (*jni.env)->ExceptionClear( jni.env );
-                return false;
-        }
-
-        return ok ? true : false;
 }
 
 // called by XashActivity when the MOTD dialog is dismissed (OK button,

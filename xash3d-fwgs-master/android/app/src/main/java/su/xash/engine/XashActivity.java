@@ -346,30 +346,6 @@ public class XashActivity extends SDLActivity {
                 return shown[0];
         }
 
-        /** Opens a http(s) link in the system browser. Server MOTDs that
-         *  are bare links or iframe-wrapped auth pages (next21-style
-         *  client checks) must complete in a real browser session — the
-         *  sandboxed MOTD WebView can't finish those flows, the server
-         *  keeps re-sending the MOTD and finally kicks the player. The
-         *  browser opens over the game; auth is done by the time the
-         *  player comes back. Returns false when the url is rejected. */
-        public boolean openExternalURL( String url ) {
-                try {
-                        if ( url == null ) return false;
-                        url = url.trim();
-                        if ( !url.startsWith( "http://" ) && !url.startsWith( "https://" )) return false;
-                        Intent i = new Intent( Intent.ACTION_VIEW, Uri.parse( url ));
-                        i.addFlags( Intent.FLAG_ACTIVITY_NEW_TASK );
-                        startActivity( i );
-                        Log.i( TAG, "openURL: " + url );
-                        return true;
-                } catch ( Throwable t ) {
-                        Log.w( TAG, "openURL failed", t );
-                        consolePrintf( "MOTD: openURL failed: " + t );
-                        return false;
-                }
-        }
-
         // the original HL1 VGUI colors — orange title/button text
         // (255,170,0) and the window border (178,119,0), straight from
         // hlsdk-portable cl_dll/vgui_MOTDWindow.cpp

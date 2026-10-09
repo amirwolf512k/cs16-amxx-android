@@ -3754,136 +3754,6 @@ static IVoiceTweak gVoiceApi =
 	Voice_GetControlFloat,
 };
 
-// engine callbacks
-// set in CL_LoadProgs, guarded use below (cvar is optional)
-static convar_t *cl_motd_browser = NULL;
-
-// static buffer so the caller can hand the link straight to the browser
-static char motd_link[2048];
-
-/*
-=============
-MOTD_ExtractLink
-
-server MOTDs are sometimes just link carriers: a bare http(s) URL,
-or an HTML wrapper whose <iframe src> points at one (the next21.ru
-"Epic Fun Knife" auth flow works exactly like this and kicks players
-~30s after connect when it never fires). Those flows must run in a
-real browser session -- the sandboxed WebView can't complete them --
-so the link goes to the system browser instead, like the community
-"MOTD in browser" client patch. Returns motd_link or NULL.
-=============
-*/
-static const char *MOTD_ExtractLink( const char *text )
-{
-	const char *p;
-	size_t i;
-
-	if( COM_StringEmpty( text ))
-		return NULL;
-
-	while( *text == ' ' || *text == '\t' || *text == '\r' || *text == '\n' )
-		text++;
-
-	// a bare link: http(s)://... up to the first whitespace or HTML delimiter
-	if( !Q_strnicmp( text, "http://", 7 ) || !Q_strnicmp( text, "https://", 8 ))
-	{
-		for( i = 0; text[i] && i < sizeof( motd_link ) - 1; i++ )
-		{
-			if(( byte )text[i] <= 0x20 || text[i] == '"' || text[i] == '\'' || text[i] == '<' || text[i] == '>' )
-				break;
-		}
-
-		if( !i )
-			return NULL;
-
-		memcpy( motd_link, text, i );
-		motd_link[i] = 0;
-		return motd_link;
-	}
-
-	// an HTML wrapper: the first <iframe> whose src points at http(s)
-	// carries the real page. Every "src" occurrence inside the tag is
-	// tried; quoted and bare values both work, &amp; decodes to '&',
-	// and a "src" that is only the tail of another name (data-src) or
-	// sits inside a quoted value is skipped.
-	p = text;
-	while(( p = Q_stristr( p, "<iframe" )))
-	{
-		const char *tag = p + 7;
-		const char *end = strchr( tag, '>' );
-		const char *a = tag;
-		qboolean found = false;
-
-		if( !end )
-			break;
-
-		while( a < end )
-		{
-			const char *f = Q_stristr( a, "src" );
-
-			if( !f || f >= end )
-				break;
-
-			a = f + 3;
-
-			// tail of another attribute name or a value: not an attribute
-			if( f > tag && (( f[-1] >= 'a' && f[-1] <= 'z' ) || ( f[-1] >= 'A' && f[-1] <= 'Z' ) ||
-				( f[-1] >= '0' && f[-1] <= '9' ) || f[-1] == '-' || f[-1] == '"' || f[-1] == '=' ))
-				continue;
-
-			while( *a == ' ' || *a == '\t' )
-				a++;
-
-			if( *a != '=' )
-				continue; // "src" without '=', keep scanning the tag
-
-			a++;
-			while( *a == ' ' || *a == '\t' )
-				a++;
-
-			if( *a == '"' || *a == '\'' )
-			{
-				char q = *a++;
-				for( i = 0; a + i < end && a[i] && a[i] != q && i < sizeof( motd_link ) - 1; i++ );
-			}
-			else
-			{
-				for( i = 0; a + i < end && ( byte )a[i] > 0x20 && i < sizeof( motd_link ) - 1; i++ );
-			}
-
-			if( !i || ( Q_strnicmp( a, "http://", 7 ) && Q_strnicmp( a, "https://", 8 )))
-				continue; // not a http(s) link, keep scanning the tag
-
-			{
-				size_t j, o;
-
-				for( j = 0, o = 0; j < i && o < sizeof( motd_link ) - 1; j++ )
-				{
-					if( !Q_strnicmp( a + j, "&amp;", 5 ))
-					{
-						motd_link[o++] = '&';
-						j += 4;
-						continue;
-					}
-					motd_link[o++] = a[j];
-				}
-				motd_link[o] = 0;
-			}
-
-			found = true;
-			break;
-		}
-
-		if( found )
-			return motd_link;
-
-		p = end + 1; // nothing usable in this tag, try the next one
-	}
-
-	return NULL;
-}
-
 /*
 =============
 pfnShowMOTD
@@ -3901,25 +3771,6 @@ static int GAME_EXPORT pfnShowMOTD( const char *title, const char *html )
 		return true;
 
 #if XASH_ANDROID
-	// link payloads go straight to the system browser (cl_motd_browser
-	// 1, default) and no in-game window is shown -- the retail window
-	// can't complete browser-bound auth sessions anyway. If the
-	// browser is missing or disabled, fall through to the dialog.
-	if( !cl_motd_browser || cl_motd_browser->value )
-	{
-		const char *link = MOTD_ExtractLink( html );
-
-		if( link )
-		{
-			Con_Printf( "MOTD: link payload, opening in system browser: %s\n", link );
-
-			if( Android_OpenURL( link ))
-				return true;
-
-			Con_Printf( S_WARN "MOTD: browser open failed, showing the dialog instead\n" );
-		}
-	}
-
 	// the window title is the SERVER NAME the client dll snapped
 	// when the MOTD finished -- retail CS parity: the gamedll sends
 	// ServerName(hostname) before the MOTD chunks, and AMXX show_motd()
@@ -4253,10 +4104,6 @@ qboolean CL_LoadProgs( const char *name )
 	cls.mempool = Mem_AllocPool( "Client Static Pool" );
 	clgame.mempool = Mem_AllocPool( "Client Edicts Zone" );
 	clgame.entities = NULL;
-
-	// MOTD links (bare URL / iframe wrapper) go to the system browser
-	cl_motd_browser = Cvar_Get( "cl_motd_browser", "1", FCVAR_ARCHIVE|FCVAR_PRIVILEGED,
-		"open server MOTD links (bare URL or iframe wrapper) in the system browser" );
 
 	// NOTE: important stuff!
 	// vgui must startup BEFORE loading client.dll to avoid get error ERROR_NOACESS during LoadLibrary
