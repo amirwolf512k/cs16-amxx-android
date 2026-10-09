@@ -56,7 +56,7 @@ void Android_Init( void )
         // (title, html) both as raw byte arrays, so a malformed
         // server string can never abort NewStringUTF
         jni.showMOTD = (*jni.env)->GetMethodID( jni.env, jni.actcls, "showMOTD", "([B[B)Z" );
-        jni.openURL = (*jni.env)->GetMethodID( jni.env, jni.actcls, "openURL", "(Ljava/lang/String;)Z" );
+        jni.openURL = (*jni.env)->GetMethodID( jni.env, jni.actcls, "openExternalURL", "(Ljava/lang/String;)Z" );
 
         // a failed lookup leaves a pending exception; clear it so
         // nothing downstream (filesystem assets, SDL) trips over it

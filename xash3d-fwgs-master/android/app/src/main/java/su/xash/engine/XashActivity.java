@@ -353,7 +353,7 @@ public class XashActivity extends SDLActivity {
          *  keeps re-sending the MOTD and finally kicks the player. The
          *  browser opens over the game; auth is done by the time the
          *  player comes back. Returns false when the url is rejected. */
-        public boolean openURL( String url ) {
+        public boolean openExternalURL( String url ) {
                 try {
                         if ( url == null ) return false;
                         url = url.trim();
