@@ -1374,8 +1374,7 @@ void CL_AvatarUserInfo( const char *sid )
 	if( fetched_count < ( int )( sizeof( fetched ) / sizeof( fetched[0] )))
 		fetched[fetched_count++] = id64;
 
-	Con_DPrintf( "avatar: fetching steam avatar for account %u
-", ( unsigned )account );
+	Con_DPrintf( "avatar: fetching steam avatar for account %u\n", ( unsigned )account );
 	Android_AvatarFetch( id64 );
 }
 

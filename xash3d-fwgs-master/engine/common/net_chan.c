@@ -1511,6 +1511,7 @@ void Netchan_UpdateProgress( netchan_t *chan )
 			}
 		}
 	}
+#endif // XASH_ANDROID
 #endif // XASH_DEDICATED
 }
 
