@@ -730,29 +730,30 @@ void CMenuPlayerSetup::_Init( void )
 	avatar.LinkCvar( "cl_avatar", CMenuEditable::CVAR_STRING );
 	avatar.onChanged = VoidCb( &CMenuPlayerSetup::UpdateAvatarPreview );
 
-	if( hideModels && ( gMenu.m_gameinfo.flags & GFL_NOMODELS ))
+	// the avatar block lives on the right column across from the
+	// spray preview: picture box on top, picker under it
+	avatarImage.szName = L( "Avatar image" );
+	if( hideModels )
 	{
-		// the model column sits empty on this game, so the avatar
-		// moves to the right side across from the spray preview,
-		// box and picture first, picker under it
-		avatarImage.szName = L( "Avatar image" );
+		// the model column is free, the avatar gets it whole
 		avatarImage.SetRect( 700, 370, 200, 200 );
 		avatar.SetRect( 700, avatarImage.pos.y + avatarImage.size.h + UI_OUTLINE_WIDTH, 200, 32 );
-
-		UpdateAvatarPreview();
-		AddItem( avatarImage );
-		AddItem( avatar );
 	}
 	else
 	{
-		avatarHint.szName = L( "Avatar image" );
-		avatarHint.colorBase = uiColorHelp;
-		avatarHint.SetRect( 460, btnChooseColor.pos.y + btnChooseColor.size.h + 28, 200, 24 );
-		avatar.SetRect( 460, avatarHint.pos.y + avatarHint.size.h + UI_OUTLINE_WIDTH, 200, 32 );
+		// player models exist: the avatar still takes the right
+		// column, the model picker and the colors stack under it
+		avatarImage.SetRect( 700, 270, 200, 200 );
+		avatar.SetRect( 700, avatarImage.pos.y + avatarImage.size.h + UI_OUTLINE_WIDTH, 200, 32 );
 
-		AddItem( avatarHint );
-		AddItem( avatar );
+		model.SetRect( 700, avatar.pos.y + avatar.size.h + 36 + UI_OUTLINE_WIDTH, 260, 32 );
+		topColor.SetCoord( 700, model.pos.y + model.size.h + 20 );
+		bottomColor.SetCoord( 700, topColor.pos.y + 50 );
 	}
+
+	UpdateAvatarPreview();
+	AddItem( avatarImage );
+	AddItem( avatar );
 
 	AddItem( name );
 	AddItem( voiceEnable );
@@ -768,12 +769,6 @@ void CMenuPlayerSetup::_Init( void )
 		AddItem( logoImage );
 	}
 
-	if( !hideAvatars )
-	{
-		AddItem( avatarHint );
-		AddItem( avatar );
-	}
-
 	if( !(gMenu.m_gameinfo.flags & GFL_NOMODELS) )
 	{
 		AddItem( topColor );
@@ -781,11 +776,6 @@ void CMenuPlayerSetup::_Init( void )
 		AddItem( showModels );
 		AddItem( hiModels );
 		AddItem( model );
-		// disable playermodel preview for HLRally to prevent crash
-		if( !hideModels )
-		{
-			AddItem( view );
-		}
 	}
 }
 

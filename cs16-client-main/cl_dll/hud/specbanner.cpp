@@ -90,8 +90,25 @@ static bool Banner_TgaSize( const char *path, int *w, int *h )
 
 int CHudSpecBanner::Draw( float flTime )
 {
-	// waiting players only: dead or on the spectator queue
-	if( !g_iUser1 && ( gHUD.m_Scoreboard.m_iPlayerNum <= 0 || !g_PlayerExtraInfo[gHUD.m_Scoreboard.m_iPlayerNum].dead ))
+	// waiting players only: spectating, riding the spectator team
+	// or dead. g_iUser1 covers the observer modes; the teamname check
+	// covers the plain CS spectator team that never sets it
+	bool spectating = g_iUser1 != 0;
+	int local = gHUD.m_Scoreboard.m_iPlayerNum;
+
+	if( !spectating && local > 0 )
+	{
+		if( g_PlayerExtraInfo[local].dead )
+			spectating = true;
+		else if( g_PlayerExtraInfo[local].teamname[0]
+			&& !stricmp( g_PlayerExtraInfo[local].teamname, "SPECTATOR" ))
+			spectating = true;
+	}
+
+	if( !spectating && gHUD.m_Health.m_iHealth <= 0 )
+		spectating = true;
+
+	if( !spectating )
 		return 0;
 
 	if( !m_szBannerFile[0] )

@@ -102,6 +102,7 @@ static struct Column
 static struct model_s *s_pAvatarModel[MAX_PLAYERS+1];
 static float s_flAvatarNextProbe[MAX_PLAYERS+1];
 static bool s_pAvatarIsBadge[MAX_PLAYERS+1];
+static bool s_pAvatarWarned[MAX_PLAYERS+1];
 static cvar_t *cl_avatar = NULL;
 
 // reunion/dproto servers put the steamid into userinfo "*sid";
@@ -146,7 +147,7 @@ static bool Scoreboard_AvatarAccount( const char *sid, int *account )
 
 static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
 {
-	char path[256], sid[128];
+	char path[256], sid[128] = "";
 	int account = 0;
 	unsigned hash = 0;
 
@@ -233,6 +234,15 @@ static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
 		s_pAvatarIsBadge[slot] = false;
 	}
 
+	// one line per slot and connect, so a device log can tell a
+	// missing file from a broken load
+	if( !s_pAvatarModel[slot] && !s_pAvatarWarned[slot] )
+	{
+		s_pAvatarWarned[slot] = true;
+		gEngfuncs.Con_DPrintf( "Avatar: no picture for slot %d (sid '%s', cl_avatar '%s')\n",
+			slot, sid, cl_avatar ? cl_avatar->string : "" );
+	}
+
 	return s_pAvatarModel[slot];
 }
 
@@ -242,6 +252,7 @@ static void Scoreboard_AvatarsInit( void )
 	memset( s_pAvatarModel, 0, sizeof( s_pAvatarModel ));
 	memset( s_flAvatarNextProbe, 0, sizeof( s_flAvatarNextProbe ));
 	memset( s_pAvatarIsBadge, 0, sizeof( s_pAvatarIsBadge ));
+	memset( s_pAvatarWarned, 0, sizeof( s_pAvatarWarned ));
 }
 
 static void Scoreboard_AvatarsReset( void )
@@ -249,6 +260,7 @@ static void Scoreboard_AvatarsReset( void )
 	memset( s_pAvatarModel, 0, sizeof( s_pAvatarModel ));
 	memset( s_flAvatarNextProbe, 0, sizeof( s_flAvatarNextProbe ));
 	memset( s_pAvatarIsBadge, 0, sizeof( s_pAvatarIsBadge ));
+	memset( s_pAvatarWarned, 0, sizeof( s_pAvatarWarned ));
 }
 
 // draws the avatar left of the name and returns the shifted name x

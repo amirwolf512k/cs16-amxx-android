@@ -892,7 +892,7 @@ public class XashActivity extends SDLActivity {
 
         // matched to the classic GoldSrc VGUI2 "Loading..." window:
         // olive panel, light frame, yellow segments on a dark track
-        private static final int LOADING_SHADE = 0xB2000000;
+        private static final int LOADING_SHADE = 0xE6000000;
         private static final int LOADING_PANEL_BG = 0xFF3E4637;
         private static final int LOADING_PANEL_BORDER = 0xFF9AA391;
         private static final int LOADING_TITLE = 0xFFE6EBDD;
@@ -1286,13 +1286,16 @@ public class XashActivity extends SDLActivity {
                                         File dir = avatarDir();
                                         if( dir == null ) return;
 
+                                        // ensure each starter badge exists;
+                                        // steam avatars landing in the same
+                                        // folder no longer cancel the rest
                                         File[] have = dir.listFiles();
+                                        java.util.Set<String> present =
+                                                new java.util.HashSet<String>();
                                         if( have != null ) {
-                                                for( File f : have ) {
-                                                        String n = f.getName().toLowerCase( java.util.Locale.US );
-                                                        if( n.endsWith( ".png" ) || n.endsWith( ".bmp" ))
-                                                                return;
-                                                }
+                                                for( File f : have )
+                                                        present.add( f.getName().toLowerCase(
+                                                                java.util.Locale.US ));
                                         }
 
                                         String[] labels = { "CS", "16", "VIP", "PRO", "ACE", "TOP", "GG", "ZM" };
@@ -1301,7 +1304,13 @@ public class XashActivity extends SDLActivity {
                                                 0xFF2A3A5A, 0xFF4A2A5A, 0xFF5A4520, 0xFF30494B
                                         };
 
+                                        boolean wrote = false;
                                         for( int i = 0; i < labels.length; i++ ) {
+                                                String fileName = "logo_" +
+                                                        labels[i].toLowerCase( java.util.Locale.US ) + ".png";
+                                                if( present.contains( fileName ))
+                                                        continue;
+
                                                 Bitmap bmp = Bitmap.createBitmap( 128, 128, Bitmap.Config.ARGB_8888 );
                                                 android.graphics.Canvas cv = new android.graphics.Canvas( bmp );
                                                 Paint p = new Paint( Paint.ANTI_ALIAS_FLAG );
@@ -1323,13 +1332,15 @@ public class XashActivity extends SDLActivity {
                                                 cv.drawText( labels[i], 64, 64 - ( fm.ascent + fm.descent ) / 2, p );
 
                                                 java.io.FileOutputStream fos = new java.io.FileOutputStream(
-                                                        new File( dir, "logo_" + labels[i].toLowerCase( java.util.Locale.US ) + ".png" ));
+                                                        new File( dir, fileName ));
                                                 bmp.compress( Bitmap.CompressFormat.PNG, 90, fos );
                                                 fos.close();
                                                 bmp.recycle();
+                                                wrote = true;
                                         }
 
-                                        consolePrintf( "Avatar: seeded the starter set into media/avatars" );
+                                        if( wrote )
+                                                consolePrintf( "Avatar: seeded the starter set into media/avatars" );
                                 } catch( Throwable t ) {
                                         Log.w( TAG, "avatar seed failed", t );
                                 }
@@ -1427,22 +1438,50 @@ public class XashActivity extends SDLActivity {
                 FrameLayout overlay = new FrameLayout( this );
                 overlay.setBackgroundColor( LOADING_SHADE );
 
-                // ---- top-left stats block, where the CS 1.6 loading
-                // screen carried the server / map / slots rows ----
+                // ---- small stats block top left, tap the dark area to
+                // fold it away ----
                 LinearLayout panel = new LinearLayout( this );
                 panel.setOrientation( LinearLayout.VERTICAL );
                 panel.setBackground( makeLoadingPanelBackground() );
-                int pad = dp( 12 );
+                int pad = dp( 10 );
                 panel.setPadding( pad, pad, pad, pad );
 
                 FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
-                        Math.round( getResources().getDisplayMetrics().widthPixels * 0.46f ),
-                        ViewGroup.LayoutParams.WRAP_CONTENT );
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT );
                 panelLp.gravity = Gravity.TOP | Gravity.START;
                 panelLp.setMargins( dp( 14 ), dp( 14 ), 0, 0 );
                 overlay.addView( panel, panelLp );
 
-                // title row: the CS mark + Loading...
+                LinearLayout stats = new LinearLayout( this );
+                stats.setOrientation( LinearLayout.VERTICAL );
+
+                mLoadingStatServer = addStatRow( stats, "Server: " +
+                        ( mStatServer.length() > 0 ? mStatServer : mLoadingServer ));
+                mLoadingStatMap = addStatRow( stats, "Map: " +
+                        ( mStatMap.length() > 0 ? mStatMap : "-" ));
+                mLoadingStatPlayers = addStatRow( stats, "Players: " +
+                        ( mStatMax.length() > 0 ? mStatMax : "-" ));
+
+                panel.addView( stats, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
+
+                // ---- the classic centered dialog: olive box carrying
+                // the "Loading..." title, the status line, the segmented
+                // bar, the server picture and Cancel, all inside one
+                // frame like the GoldSrc VGUI window ----
+                LinearLayout dialog = new LinearLayout( this );
+                dialog.setOrientation( LinearLayout.VERTICAL );
+                dialog.setBackground( makeLoadingPanelBackground() );
+                int dpad = dp( 12 );
+                dialog.setPadding( dpad, dpad, dpad, dpad );
+
+                int dlgW = Math.min( dp( 340 ),
+                        getResources().getDisplayMetrics().widthPixels - dp( 32 ));
+                FrameLayout.LayoutParams dialogLp = new FrameLayout.LayoutParams(
+                        dlgW, ViewGroup.LayoutParams.WRAP_CONTENT );
+                dialogLp.gravity = Gravity.CENTER;
+                overlay.addView( dialog, dialogLp );
+
                 LinearLayout titleRow = new LinearLayout( this );
                 titleRow.setGravity( Gravity.CENTER_VERTICAL );
 
@@ -1462,40 +1501,8 @@ public class XashActivity extends SDLActivity {
                 titleRow.addView( title, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
 
-                panel.addView( titleRow, new LinearLayout.LayoutParams(
+                dialog.addView( titleRow, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
-
-                LinearLayout stats = new LinearLayout( this );
-                stats.setOrientation( LinearLayout.VERTICAL );
-
-                mLoadingStatServer = addStatRow( stats, "Server: " +
-                        ( mStatServer.length() > 0 ? mStatServer : mLoadingServer ));
-                mLoadingStatMap = addStatRow( stats, "Map: " +
-                        ( mStatMap.length() > 0 ? mStatMap : "-" ));
-                mLoadingStatPlayers = addStatRow( stats, "Players: " +
-                        ( mStatMax.length() > 0 ? mStatMax : "-" ));
-
-                LinearLayout.LayoutParams statsLp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT );
-                statsLp.topMargin = dp( 8 );
-                panel.addView( stats, statsLp );
-
-                // ---- bottom strip: the server's own picture over the
-                // segmented bar, the part of the loading screen the
-                // servers could customize ----
-                LinearLayout bottom = new LinearLayout( this );
-                bottom.setOrientation( LinearLayout.VERTICAL );
-                bottom.setPadding( dp( 14 ), dp( 6 ), dp( 14 ), dp( 10 ));
-
-                ImageView banner = new ImageView( this );
-                banner.setScaleType( ImageView.ScaleType.FIT_CENTER );
-                banner.setAdjustViewBounds( true );
-                banner.setMaxHeight( dp( 140 ));
-                banner.setVisibility( View.GONE );
-                LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
-                bottom.addView( banner, bannerLp );
-                mLoadingBanner = banner;
 
                 TextView status = new TextView( this );
                 status.setText( mLoadingServer.isEmpty() ? "Loading..."
@@ -1505,16 +1512,29 @@ public class XashActivity extends SDLActivity {
                 status.setSingleLine( false );
                 LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
-                statusLp.topMargin = dp( 6 );
-                bottom.addView( status, statusLp );
+                statusLp.topMargin = dp( 8 );
+                dialog.addView( status, statusLp );
                 mLoadingStatus = status;
 
                 LoadingBar bar = new LoadingBar( this );
                 LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, dp( 18 ));
-                barLp.topMargin = dp( 6 );
-                bottom.addView( bar, barLp );
+                barLp.topMargin = dp( 8 );
+                dialog.addView( bar, barLp );
                 mLoadingBar = bar;
+
+                // the server's own picture lives inside the dialog now,
+                // above the cancel row, like the PC loading window did
+                ImageView banner = new ImageView( this );
+                banner.setScaleType( ImageView.ScaleType.FIT_CENTER );
+                banner.setAdjustViewBounds( true );
+                banner.setMaxHeight( dp( 110 ));
+                banner.setVisibility( View.GONE );
+                LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                bannerLp.topMargin = dp( 10 );
+                dialog.addView( banner, bannerLp );
+                mLoadingBanner = banner;
 
                 LinearLayout cancelRow = new LinearLayout( this );
                 cancelRow.setGravity( Gravity.END );
@@ -1536,17 +1556,12 @@ public class XashActivity extends SDLActivity {
                         }
                 });
                 cancelRow.addView( cancel, new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, dp( 32 )));
+                        ViewGroup.LayoutParams.WRAP_CONTENT, dp( 30 )));
 
                 LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
-                cancelLp.topMargin = dp( 6 );
-                bottom.addView( cancelRow, cancelLp );
-
-                FrameLayout.LayoutParams bottomLp = new FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
-                bottomLp.gravity = Gravity.BOTTOM | Gravity.START;
-                overlay.addView( bottom, bottomLp );
+                cancelLp.topMargin = dp( 10 );
+                dialog.addView( cancelRow, cancelLp );
 
                 mLoadingOverlay = overlay;
 
