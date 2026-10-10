@@ -101,7 +101,6 @@ static struct Column
 
 static struct model_s *s_pAvatarModel[MAX_PLAYERS+1];
 static float s_flAvatarNextProbe[MAX_PLAYERS+1];
-static bool s_pAvatarIsBadge[MAX_PLAYERS+1];
 static bool s_pAvatarWarned[MAX_PLAYERS+1];
 static cvar_t *cl_avatar = NULL;
 
@@ -145,20 +144,33 @@ static bool Scoreboard_AvatarAccount( const char *sid, int *account )
 	return *account > 0;
 }
 
+// load a picture quietly: a missing file must not print the hud
+// sprite error on every probe, the picture may still be on its
+// way over the network or the steam fetch may not have run yet
+static struct model_s *Scoreboard_LoadAvatarSprite( const char *path )
+{
+	byte *test = ( byte * )gEngfuncs.COM_LoadFile(( char * )path, 5, NULL );
+	struct model_s *sprite;
+
+	if( !test )
+		return NULL;
+
+	gEngfuncs.COM_FreeFile( test );
+
+	sprite = gEngfuncs.LoadMapSprite( path );
+
+	return sprite;
+}
+
 static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
 {
 	char path[256], sid[128] = "";
 	int account = 0;
-	unsigned hash = 0;
 
 	if( s_pAvatarModel[slot] )
-	{
-		// a real avatar just stays; a stand-in badge keeps watching
-		// the clock so the steam photo replaces it once it lands
-		if( !s_pAvatarIsBadge[slot] || flTime < s_flAvatarNextProbe[slot] )
-			return s_pAvatarModel[slot];
-	}
-	else if( flTime < s_flAvatarNextProbe[slot] )
+		return s_pAvatarModel[slot];
+
+	if( flTime < s_flAvatarNextProbe[slot] )
 		return NULL;
 
 	s_flAvatarNextProbe[slot] = flTime + AVATAR_PROBE_TIME;
@@ -174,7 +186,7 @@ static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
 		if( strchr( cl_avatar->string, '/' ) || strchr( cl_avatar->string, '\\' ))
 		{
 			snprintf( path, sizeof( path ), "%s", cl_avatar->string );
-			s_pAvatarModel[slot] = gEngfuncs.LoadMapSprite( path );
+			s_pAvatarModel[slot] = Scoreboard_LoadAvatarSprite( path );
 		}
 		else
 		{
@@ -185,12 +197,17 @@ static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
 			{
 				snprintf( path, sizeof( path ), "media/avatars/%s.%s",
 					cl_avatar->string, exts[e] );
-				s_pAvatarModel[slot] = gEngfuncs.LoadMapSprite( path );
+				s_pAvatarModel[slot] = Scoreboard_LoadAvatarSprite( path );
 			}
 		}
 	}
 	else
 	{
+		// only real pictures here: the steam photo for players the
+		// server gave a steamid, and steam's own default picture
+		// (av_default.png, the one steam shows on the web) for bots
+		// and players without a sid. no stand-in logos. the probe
+		// keeps running so a photo appears the moment it lands.
 		bool have_sid;
 
 		strncpy( sid, gEngfuncs.PlayerInfo_ValueForKey( slot, "*sid" ), sizeof( sid ) - 1 );
@@ -199,39 +216,11 @@ static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
 		have_sid = Scoreboard_AvatarAccount( sid, &account );
 
 		if( have_sid )
-		{
 			snprintf( path, sizeof( path ), "media/avatars/av_%d.png", account );
-			s_pAvatarModel[slot] = gEngfuncs.LoadMapSprite( path );
-			hash = ( unsigned )account;
-		}
-	}
+		else
+			snprintf( path, sizeof( path ), "media/avatars/av_default.png" );
 
-	if( !s_pAvatarModel[slot] )
-	{
-		// steam photo out of reach (bots carry no *sid, and the
-		// community pages answer nothing on filtered networks):
-		// hold a stable badge from the starter set so the row is
-		// not empty. the same player always lands on the same
-		// picture, and the real photo replaces the badge the
-		// moment it shows up on disk.
-		const char *nm = g_PlayerInfoList[slot].name;
-		static const char *const badges[] =
-		{
-			"logo_cs", "logo_16", "logo_vip", "logo_pro",
-			"logo_ace", "logo_top", "logo_gg", "logo_zm"
-		};
-
-		while( nm && *nm )
-			hash = hash * 31u + ( unsigned char )*nm++;
-
-		hash %= sizeof( badges ) / sizeof( badges[0] );
-		snprintf( path, sizeof( path ), "media/avatars/%s.png", badges[hash] );
-		s_pAvatarModel[slot] = gEngfuncs.LoadMapSprite( path );
-		s_pAvatarIsBadge[slot] = s_pAvatarModel[slot] != NULL;
-	}
-	else
-	{
-		s_pAvatarIsBadge[slot] = false;
+		s_pAvatarModel[slot] = Scoreboard_LoadAvatarSprite( path );
 	}
 
 	// one line per slot and connect, so a device log can tell a
@@ -251,7 +240,6 @@ static void Scoreboard_AvatarsInit( void )
 	cl_avatar = CVAR_CREATE( "cl_avatar", "", FCVAR_ARCHIVE );
 	memset( s_pAvatarModel, 0, sizeof( s_pAvatarModel ));
 	memset( s_flAvatarNextProbe, 0, sizeof( s_flAvatarNextProbe ));
-	memset( s_pAvatarIsBadge, 0, sizeof( s_pAvatarIsBadge ));
 	memset( s_pAvatarWarned, 0, sizeof( s_pAvatarWarned ));
 }
 
@@ -259,7 +247,6 @@ static void Scoreboard_AvatarsReset( void )
 {
 	memset( s_pAvatarModel, 0, sizeof( s_pAvatarModel ));
 	memset( s_flAvatarNextProbe, 0, sizeof( s_flAvatarNextProbe ));
-	memset( s_pAvatarIsBadge, 0, sizeof( s_pAvatarIsBadge ));
 	memset( s_pAvatarWarned, 0, sizeof( s_pAvatarWarned ));
 }
 
@@ -267,7 +254,7 @@ static void Scoreboard_AvatarsReset( void )
 static int Scoreboard_DrawAvatar( int slot, int x, int ypos )
 {
 	struct model_s *avatar = Scoreboard_GetAvatar( slot, gHUD.m_flTime );
-	int asz = ROW_GAP - 3;
+	int asz = ROW_GAP; // one row tall, the row pitch caps how far it grows
 
 	if( !avatar )
 		return x;
@@ -276,9 +263,9 @@ static int Scoreboard_DrawAvatar( int slot, int x, int ypos )
 	gEngfuncs.pTriAPI->CullFace( TRI_NONE );
 	gEngfuncs.pTriAPI->Color4f( 1.0f, 1.0f, 1.0f, 1.0f );
 	gEngfuncs.pTriAPI->SpriteTexture( avatar, 0 );
-	DrawUtils::Draw2DQuad( (float)x + 1, (float)ypos + 1, (float)x + 1 + asz, (float)ypos + 1 + asz );
+	DrawUtils::Draw2DQuad( (float)x, (float)ypos, (float)x + asz, (float)ypos + asz );
 
-	return x + asz + 3;
+	return x + asz + 4;
 }
 
 int CHudScoreboard :: Init( void )

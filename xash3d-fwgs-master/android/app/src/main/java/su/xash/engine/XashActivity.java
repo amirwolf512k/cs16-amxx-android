@@ -904,7 +904,6 @@ public class XashActivity extends SDLActivity {
         private FrameLayout mLoadingOverlay;
         private LoadingBar mLoadingBar;
         private TextView mLoadingStatus;
-        private ImageView mLoadingBanner;
         private String mLoadingServer = "";
 
         // stats block of the loading window, filled from the goldsrc
@@ -915,6 +914,7 @@ public class XashActivity extends SDLActivity {
         private String mStatServer = "";
         private String mStatMap = "";
         private String mStatMax = "";
+        private int mStatCur = -1;
 
         /** The segmented yellow progress bar of the classic loading
          *  window: small blocks filling left to right. percent < 0
@@ -962,6 +962,7 @@ public class XashActivity extends SDLActivity {
 
         public void loadingShow( final String serverAddr ) {
                 seedDefaultAvatars();
+                queryServerInfo( serverAddr );
 
                 runOnUiThread( new Runnable() {
                         @Override public void run() {
@@ -1001,7 +1002,7 @@ public class XashActivity extends SDLActivity {
                                 try {
                                         if( server != null && server.length() > 0 ) mStatServer = server;
                                         if( map != null && map.length() > 0 ) mStatMap = map;
-                                        if( maxPlayers > 0 ) mStatMax = "?/" + maxPlayers;
+                                        if( maxPlayers > 0 ) mStatMax = String.valueOf( maxPlayers );
 
                                         if( mLoadingOverlay == null ) return;
 
@@ -1010,12 +1011,143 @@ public class XashActivity extends SDLActivity {
                                         if( mLoadingStatMap != null && mStatMap.length() > 0 )
                                                 mLoadingStatMap.setText( "Map: " + mStatMap );
                                         if( mLoadingStatPlayers != null && mStatMax.length() > 0 )
-                                                mLoadingStatPlayers.setText( "Players: " + mStatMax );
+                                                mLoadingStatPlayers.setText( "Players: " +
+                                                        ( mStatCur >= 0 ? mStatCur : "?" ) + "/" + mStatMax );
                                 } catch( Throwable t ) {
                                         Log.w( TAG, "loadingStats failed", t );
                                 }
                         }
                 });
+        }
+
+        /** live player count from the direct A2S_INFO query; the
+         *  goldsrc serverdata carries the hostname and the slot count
+         *  but never how many seats are taken right now */
+        public void loadingPlayerCount( final int players, final int max ) {
+                runOnUiThread( new Runnable() {
+                        @Override public void run() {
+                                try {
+                                        if( players >= 0 && max > 0 ) {
+                                                mStatCur = players;
+                                                mStatMax = String.valueOf( max );
+                                        }
+
+                                        if( mLoadingOverlay == null ) return;
+
+                                        if( mLoadingStatPlayers != null && mStatMax.length() > 0 )
+                                                mLoadingStatPlayers.setText( "Players: " +
+                                                        ( mStatCur >= 0 ? mStatCur : "?" ) + "/" + mStatMax );
+                                } catch( Throwable t ) {
+                                        Log.w( TAG, "loadingPlayerCount failed", t );
+                                }
+                        }
+                });
+        }
+
+        /** A2S_INFO against the connect address: one tiny udp query,
+         *  challenge round included, so the stats panel can show the
+         *  real player count instead of an anonymous question mark */
+        private void queryServerInfo( String addr ) {
+                try {
+                        String a = addr == null ? "" : addr.trim();
+                        if( a.startsWith( "steam://" )) a = a.substring( 8 );
+                        if( a.length() == 0 || a.equalsIgnoreCase( "localhost" )) return;
+
+                        int colon = a.lastIndexOf( ':' );
+                        final String host = colon > 0 ? a.substring( 0, colon ) : a;
+                        final int port = colon > 0 ?
+                                Integer.parseInt( a.substring( colon + 1 )) : 27015;
+                        if( host.length() == 0 || port <= 0 || port > 65535 ) return;
+
+                        Thread t = new Thread( new Runnable() {
+                                @Override public void run() {
+                                        try {
+                                                java.net.DatagramSocket s = new java.net.DatagramSocket();
+                                                s.setSoTimeout( 1500 );
+                                                java.net.InetAddress ip = java.net.InetAddress.getByName( host );
+
+                                                byte[] head = { ( byte )0xFF, ( byte )0xFF, ( byte )0xFF, ( byte )0xFF, 'T' };
+                                                byte[] tail = "Source Engine Query".getBytes( "ISO-8859-1" );
+                                                byte[] query = new byte[head.length + tail.length + 1];
+                                                System.arraycopy( head, 0, query, 0, head.length );
+                                                System.arraycopy( tail, 0, query, head.length, tail.length );
+                                                query[query.length - 1] = 0;
+
+                                                byte[] reply = a2sRound( s, ip, port, query );
+                                                if( reply != null && reply.length > 9 && reply[4] == 'A' ) {
+                                                        // challenge first, resend with the
+                                                        // four bytes appended
+                                                        byte[] ch = new byte[query.length + 4];
+                                                        System.arraycopy( query, 0, ch, 0, query.length );
+                                                        System.arraycopy( reply, 5, ch, query.length, 4 );
+                                                        reply = a2sRound( s, ip, port, ch );
+                                                }
+                                                s.close();
+
+                                                if( reply == null || reply.length < 10 ||
+                                                        ( reply[4] != 'm' && reply[4] != 'I' )) return;
+
+                                                int off = 5 + ( reply[4] == 'I' ? 1 : 0 );
+                                                String name = a2sString( reply, off );
+                                                if( name == null ) return;
+                                                off += name.length() + 1;
+                                                String map = a2sString( reply, off );
+                                                if( map == null ) return;
+                                                off += map.length() + 1;
+                                                String skip = a2sString( reply, off ); // folder
+                                                if( skip == null ) return;
+                                                off += skip.length() + 1;
+                                                skip = a2sString( reply, off ); // game
+                                                if( skip == null ) return;
+                                                off += skip.length() + 1;
+                                                if( reply[4] == 'I' ) off += 2; // source appid
+                                                if( off + 2 > reply.length ) return;
+
+                                                final int players = reply[off] & 0xFF;
+                                                final int max = reply[off + 1] & 0xFF;
+                                                final String fname = name, fmap = map;
+                                                runOnUiThread( new Runnable() {
+                                                        @Override public void run() {
+                                                                try {
+                                                                        loadingStats( fname, fmap, max > 0 ? max : 1 );
+                                                                        loadingPlayerCount( players, max );
+                                                                } catch( Throwable ignored ) {}
+                                                        }
+                                                });
+                                        } catch( Throwable t ) {
+                                                // no answer is fine, the row keeps the
+                                                // slot count the engine reported
+                                        }
+                                }
+                        });
+                        t.setDaemon( true );
+                        t.start();
+                } catch( Throwable t ) {
+                        // unparsable address, skip the query
+                }
+        }
+
+        private static byte[] a2sRound( java.net.DatagramSocket s, java.net.InetAddress ip,
+                int port, byte[] query ) throws Exception {
+                s.send( new java.net.DatagramPacket( query, query.length, ip, port ));
+                byte[] buf = new byte[2048];
+                java.net.DatagramPacket p = new java.net.DatagramPacket( buf, buf.length );
+                s.receive( p );
+                byte[] out = new byte[p.getLength()];
+                System.arraycopy( buf, 0, out, 0, out.length );
+                return out;
+        }
+
+        private static String a2sString( byte[] b, int off ) {
+                if( off < 0 || off >= b.length ) return null;
+                int e = off;
+                while( e < b.length && b[e] != 0 ) e++;
+                if( e >= b.length ) return null;
+                try {
+                        return new String( b, off, e - off, "UTF-8" );
+                } catch( Throwable t ) {
+                        return null;
+                }
         }
 
         /** one stats row in the loading window, PC dialog style */
@@ -1027,51 +1159,6 @@ public class XashActivity extends SDLActivity {
                 parent.addView( row, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
                 return row;
-        }
-
-        /** The director banner (DRC_CMD_BANNER): a game-relative path to
-         *  the server's tga, downloaded with the other resources. The file
-         *  may still be in flight, so poll until it lands or the loading
-         *  window goes away — this is what the PC loading dialog showed. */
-        public void loadingBannerFile( final String relPath ) {
-                runOnUiThread( new Runnable() {
-                        @Override public void run() {
-                                try {
-                                        if( relPath == null || relPath.isEmpty()) return;
-                                        if( mLoadingOverlay == null ) return;
-
-                                        final String path = relPath;
-                                        final android.os.Handler h = new android.os.Handler();
-                                        final int[] tries = { 0 };
-                                        Runnable poll = null;
-
-                                        poll = new Runnable() {
-                                                @Override public void run() {
-                                                        if( mLoadingOverlay == null || mLoadingBanner == null ) return;
-                                                        if( tries[0]++ > 40 ) return; // ~60s then give up
-
-                                                        File f = gameDirFile( path );
-                                                        if( f == null || !f.isFile() || f.length() < 18 ) {
-                                                                h.postDelayed( this, 1500 );
-                                                                return;
-                                                        }
-
-                                                        Bitmap bmp = decodeImageFile( f );
-                                                        if( bmp == null ) {
-                                                                h.postDelayed( this, 1500 );
-                                                                return;
-                                                        }
-
-                                                        mLoadingBanner.setImageBitmap( bmp );
-                                                        mLoadingBanner.setVisibility( View.VISIBLE );
-                                                }
-                                        };
-                                        poll.run();
-                                } catch( Throwable t ) {
-                                        Log.w( TAG, "loadingBannerFile failed", t );
-                                }
-                        }
-                });
         }
 
         /** Resolve a game-relative path against the running gamedir. */
@@ -1212,49 +1299,64 @@ public class XashActivity extends SDLActivity {
                 }
 
                 final File out = new File( dir, "av_" + account + ".png" );
-                long stale = System.currentTimeMillis() - 24L * 60 * 60 * 1000;
-                if( out.isFile() && out.length() > 0 && out.lastModified() > stale ) {
-                        // fresh copy on disk from an earlier session; steam
-                        // avatars change, so anything older than a day
-                        // falls through and gets pulled again
-                        mAvatarFetched.add( key );
-                        return;
-                }
-
                 mAvatarFetched.add( key );
 
                 Thread t = new Thread( new Runnable() {
                         @Override public void run() {
                                 try {
-                                        // be gentle with the community endpoint:
-                                        // one request per 300ms across all players
-                                        synchronized( AVATAR_RATE_LOCK ) {
-                                                long now = System.currentTimeMillis();
-                                                long wait = 300 - ( now - sAvatarLastFetch );
-                                                if( wait > 0 ) Thread.sleep( wait );
-                                                sAvatarLastFetch = System.currentTimeMillis();
+                                        // a fresh copy from an earlier session is reused
+                                        // while it still decodes; steam avatars change, so
+                                        // anything older than a day is pulled again, and
+                                        // broken leftovers are not trusted either
+                                        long stale = System.currentTimeMillis() - 24L * 60 * 60 * 1000;
+                                        if( out.isFile() && out.length() > 0 && out.lastModified() > stale
+                                                && BitmapFactory.decodeFile( out.getAbsolutePath()) != null )
+                                                return;
+
+                                        // steamcommunity answers nothing on filtered
+                                        // networks, so keep trying while the game runs
+                                        // instead of writing the player off after one go
+                                        for( int attempt = 0; attempt < 4; attempt++ ) {
+                                                synchronized( AVATAR_RATE_LOCK ) {
+                                                        long now = System.currentTimeMillis();
+                                                        long wait = 300 - ( now - sAvatarLastFetch );
+                                                        if( wait > 0 ) Thread.sleep( wait );
+                                                        sAvatarLastFetch = System.currentTimeMillis();
+                                                }
+
+                                                String xml = httpGetString(
+                                                        "https://steamcommunity.com/profiles/" + steamid64 + "/?xml=1" );
+                                                String url = xml == null ? null : extractXmlTag( xml, "avatarFull" );
+
+                                                if( url != null && url.length() > 0 ) {
+                                                        byte[] img = httpGetBytes( url );
+                                                        if( img != null && img.length >= 64 ) {
+                                                                Bitmap bmp = BitmapFactory.decodeByteArray( img, 0, img.length );
+                                                                if( bmp != null ) {
+                                                                        java.io.FileOutputStream fos = new java.io.FileOutputStream( out );
+                                                                        bmp.compress( Bitmap.CompressFormat.PNG, 90, fos );
+                                                                        fos.close();
+                                                                        consolePrintf( "Avatar: saved steam avatar for account " + account );
+                                                                        return;
+                                                                }
+                                                        }
+                                                }
+
+                                                Thread.sleep( 15000 );
                                         }
-
-                                        String xml = httpGetString(
-                                                "https://steamcommunity.com/profiles/" + steamid64 + "/?xml=1" );
-                                        if( xml == null ) return;
-
-                                        String url = extractXmlTag( xml, "avatarFull" );
-                                        if( url == null || url.isEmpty()) return;
-
-                                        byte[] img = httpGetBytes( url );
-                                        if( img == null || img.length < 64 ) return;
-
-                                        Bitmap bmp = BitmapFactory.decodeByteArray( img, 0, img.length );
-                                        if( bmp == null ) return;
-
-                                        java.io.FileOutputStream fos = new java.io.FileOutputStream( out );
-                                        bmp.compress( Bitmap.CompressFormat.PNG, 90, fos );
-                                        fos.close();
-                                        consolePrintf( "Avatar: saved steam avatar for account " + account );
                                 } catch( Throwable t ) {
                                         Log.w( TAG, "avatar fetch failed", t );
                                 }
+
+                                // not fetched this round: free the slot and try
+                                // again in a minute, the rate limiter keeps it gentle
+                                mAvatarFetched.remove( key );
+                                new android.os.Handler( android.os.Looper.getMainLooper()).postDelayed(
+                                        new Runnable() {
+                                                @Override public void run() {
+                                                        avatarFetch( steamid64 );
+                                                }
+                                        }, 60000 );
                         }
                 });
                 t.setDaemon( true );
@@ -1337,6 +1439,25 @@ public class XashActivity extends SDLActivity {
                                                 fos.close();
                                                 bmp.recycle();
                                                 wrote = true;
+                                        }
+
+                                        // steam's own default picture for the
+                                        // players whose photo can't be resolved
+                                        // (bots, no sid): it is what steam itself
+                                        // shows on the web, nothing made up
+                                        File def = new File( dir, "av_default.png" );
+                                        if( !def.isFile() || def.length() == 0 ) {
+                                                byte[] img = httpGetBytes(
+                                                        "https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg" );
+                                                if( img != null && img.length > 64 ) {
+                                                        Bitmap bmp = BitmapFactory.decodeByteArray( img, 0, img.length );
+                                                        if( bmp != null ) {
+                                                                java.io.FileOutputStream fos = new java.io.FileOutputStream( def );
+                                                                bmp.compress( Bitmap.CompressFormat.PNG, 90, fos );
+                                                                fos.close();
+                                                                bmp.recycle();
+                                                        }
+                                                }
                                         }
 
                                         if( wrote )
@@ -1434,6 +1555,7 @@ public class XashActivity extends SDLActivity {
                 mStatServer = "";
                 mStatMap = "";
                 mStatMax = "";
+                mStatCur = -1;
 
                 FrameLayout overlay = new FrameLayout( this );
                 overlay.setBackgroundColor( LOADING_SHADE );
@@ -1523,19 +1645,6 @@ public class XashActivity extends SDLActivity {
                 dialog.addView( bar, barLp );
                 mLoadingBar = bar;
 
-                // the server's own picture lives inside the dialog now,
-                // above the cancel row, like the PC loading window did
-                ImageView banner = new ImageView( this );
-                banner.setScaleType( ImageView.ScaleType.FIT_CENTER );
-                banner.setAdjustViewBounds( true );
-                banner.setMaxHeight( dp( 110 ));
-                banner.setVisibility( View.GONE );
-                LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
-                bannerLp.topMargin = dp( 10 );
-                dialog.addView( banner, bannerLp );
-                mLoadingBanner = banner;
-
                 LinearLayout cancelRow = new LinearLayout( this );
                 cancelRow.setGravity( Gravity.END );
 
@@ -1586,7 +1695,6 @@ public class XashActivity extends SDLActivity {
                 mLoadingOverlay = null;
                 mLoadingBar = null;
                 mLoadingStatus = null;
-                mLoadingBanner = null;
 
                 try {
                         ViewGroup parent = ( ViewGroup )overlay.getParent();

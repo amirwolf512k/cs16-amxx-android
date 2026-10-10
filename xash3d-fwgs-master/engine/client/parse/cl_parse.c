@@ -886,8 +886,10 @@ static void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
 	}
 
 #if XASH_ANDROID
-	// fill the CS 1.6 style loading window stats panel
+	// fill the CS 1.6 style loading window stats panel and move the
+	// status line on to the resource phase
 	Android_LoadingStats( hostname, clgame.mapname, cl.maxclients );
+	Android_LoadingStatus( "Verifying map and resources...", -1.0f );
 #endif
 	Q_snprintf( mapfile, sizeof( mapfile ), "maps/%s.bsp", clgame.mapname );
 	if( CRC32_MapFile( &cl.worldmapCRC, mapfile, cl.maxclients > 1 ))
@@ -2022,27 +2024,6 @@ static void CL_ParseDirector( sizebuf_t *msg )
 	// parse user message into buffer
 	MSG_ReadBytes( msg, pbuf, sizeof( pbuf ), iSize );
 	clgame.dllFuncs.pfnDirectorMessage( iSize, pbuf );
-
-#if XASH_ANDROID
-	// DRC_CMD_BANNER is how servers hand clients their banner picture
-	// (a tga shipped as a generic resource). While the loading window is
-	// up the image goes to its footer, like the PC loading dialog did;
-	// after the map loads the client dll draws it in the spec corner.
-	if( iSize > 1 && pbuf[0] == DRC_CMD_BANNER )
-	{
-		char banner[256];
-		int len = iSize - 1;
-
-		if( len > ( int )sizeof( banner ) - 1 )
-			len = sizeof( banner ) - 1;
-
-		memcpy( banner, pbuf + 1, len );
-		banner[len] = 0;
-
-		if( !COM_StringEmpty( banner ))
-			Android_LoadingBannerFile( banner );
-	}
-#endif
 }
 
 /*

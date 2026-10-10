@@ -39,7 +39,6 @@
     void loadingShow(java.lang.String);
     void loadingStatus(java.lang.String, float);
     void loadingStats(java.lang.String, java.lang.String, int);
-    void loadingBannerFile(java.lang.String);
     void loadingHide();
     void avatarFetch(long);
     void nativeMOTDClosed();

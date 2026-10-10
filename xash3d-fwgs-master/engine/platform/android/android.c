@@ -38,7 +38,6 @@ struct jnimethods_s
         jmethodID loadingShow; // CS 1.6 style loading window
         jmethodID loadingStatus;
         jmethodID loadingStats; // server / map / slots for the stats panel
-        jmethodID loadingBannerFile;
         jmethodID loadingHide;
         jmethodID avatarFetch; // steam avatar for the scoreboard
 } jni;
@@ -50,24 +49,6 @@ static qboolean g_motd_dialog_open = false;
 // set from the UI thread when the player presses Cancel on the loading
 // window; the engine picks it up on its own thread and disconnects
 static qboolean g_loading_cancelled = false;
-
-// server MOTD pages carry the server's ad image; ascii-only guard so a
-// crafted payload can never abort NewStringUTF on the engine thread
-static qboolean LoadingURLIsSafe( const char *url )
-{
-        const char *p;
-
-        if( COM_StringEmpty( url ))
-                return false;
-
-        for( p = url; *p; p++ )
-        {
-                if(( unsigned char )*p <= 0x20 || ( unsigned char )*p > 0x7E )
-                        return false;
-        }
-
-        return true;
-}
 
 /*
 ========================
@@ -160,36 +141,6 @@ void Android_LoadingStats( const char *server, const char *map, int maxplayers )
 
 /*
 ========================
-Android_LoadingBannerFile
-
-the director banner (game-relative path, downloaded with the other
-resources) for the loading window footer.
-========================
-*/
-void Android_LoadingBannerFile( const char *path )
-{
-        jstring jstr;
-
-        if( !jni.env || !jni.activity || !jni.loadingBannerFile )
-                return;
-
-        if( !LoadingURLIsSafe( path ))
-                return;
-
-        jstr = (*jni.env)->NewStringUTF( jni.env, path );
-
-        if( !jstr )
-                return;
-
-        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.loadingBannerFile, jstr );
-        (*jni.env)->DeleteLocalRef( jni.env, jstr );
-
-        if( (*jni.env)->ExceptionCheck( jni.env ))
-                (*jni.env)->ExceptionClear( jni.env );
-}
-
-/*
-========================
 Android_LoadingHide
 
 window goes away, the game is about to take the screen.
@@ -250,7 +201,6 @@ void Android_Init( void )
         jni.loadingShow = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingShow", "(Ljava/lang/String;)V" );
         jni.loadingStatus = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingStatus", "(Ljava/lang/String;F)V" );
         jni.loadingStats = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingStats", "(Ljava/lang/String;Ljava/lang/String;I)V" );
-        jni.loadingBannerFile = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingBannerFile", "(Ljava/lang/String;)V" );
         jni.loadingHide = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingHide", "()V" );
         jni.avatarFetch = (*jni.env)->GetMethodID( jni.env, jni.actcls, "avatarFetch", "(J)V" );
         // a failed lookup leaves a pending exception; clear it so

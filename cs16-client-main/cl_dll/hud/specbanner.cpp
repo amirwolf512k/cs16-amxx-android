@@ -18,8 +18,8 @@
 // the standard DRC_CMD_BANNER picture: servers ship a tga as a generic
 // resource (precache_generic) and name it through svc_director; the PC
 // client hung it in the spectator panel top-left, we draw it in the same
-// corner while you are dead or spectating. The Android loading window
-// shows the same file in its footer while the map loads.
+// corner while you are dead or spectating. Alive players never
+// see it, and the loading window stays clean.
 //
 #include <string.h>
 #include <stdio.h>

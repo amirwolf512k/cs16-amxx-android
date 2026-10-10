@@ -17,6 +17,7 @@ GNU General Public License for more details.
 #include "common.h"
 #include "client.h" // ConnectionProgress
 #include "netchan.h"
+#include "platform/platform.h" // Android_LoadingStatus
 #include "xash3d_mathlib.h"
 #include "net_ws_private.h"
 #include "net_http_tls.h"
@@ -1253,6 +1254,8 @@ Call every frame
 */
 void HTTP_Run( void )
 {
+	const char *activefile = NULL;
+
 	http.resolving = false;
 	http.progress_count = 0;
 	http.progress = 0;
@@ -1263,6 +1266,9 @@ void HTTP_Run( void )
 
 		while( move_next > 0 )
 			move_next = curfile->pfn_process( curfile );
+
+		if( !activefile && curfile->size > 0 && curfile->downloaded < curfile->size )
+			activefile = curfile->to_memory ? curfile->url : curfile->path;
 
 		if( curfile->blocktime > http_timeout.value )
 		{
@@ -1275,6 +1281,41 @@ void HTTP_Run( void )
 	// update progress
 	if( !Host_IsDedicated() && http.progress_count != 0 )
 		Cvar_SetValue( "scr_download", http.progress/http.progress_count * 100 );
+
+#if XASH_ANDROID
+	// http transfers never ride the netchan file stream, so without
+	// this the loading window bar sat at zero the whole join on
+	// servers that push their files through fastdl
+	if( activefile && http.progress_count != 0 )
+	{
+		static char lastname[MAX_SYSPATH];
+		static float lastpercent = -2.0f;
+		float percent = http.progress / http.progress_count * 100.0f;
+		const char *p;
+		qboolean printable = true;
+
+		// NewStringUTF aborts on stray bytes, keep the path ascii
+		for( p = activefile; *p; p++ )
+		{
+			if(( unsigned char )*p <= 0x20 || ( unsigned char )*p > 0x7E )
+			{
+				printable = false;
+				break;
+			}
+		}
+
+		if( printable && ( percent - lastpercent >= 0.5f || percent < lastpercent ||
+			Q_strcmp( activefile, lastname )))
+		{
+			char status[MAX_SYSPATH];
+
+			Q_snprintf( status, sizeof( status ), "Downloading %s", activefile );
+			Android_LoadingStatus( status, percent );
+			Q_strncpy( lastname, activefile, sizeof( lastname ));
+			lastpercent = percent;
+		}
+	}
+#endif // XASH_ANDROID
 
 	HTTP_AutoClean();
 }

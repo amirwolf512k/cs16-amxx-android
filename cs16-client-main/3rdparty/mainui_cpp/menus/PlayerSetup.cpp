@@ -742,8 +742,8 @@ void CMenuPlayerSetup::_Init( void )
 	else
 	{
 		// player models exist: the avatar still takes the right
-		// column, the model picker and the colors stack under it
-		avatarImage.SetRect( 700, 270, 200, 200 );
+		// column, level with the spray block, the model picker and the colors stack under it
+		avatarImage.SetRect( 700, 370, 200, 200 );
 		avatar.SetRect( 700, avatarImage.pos.y + avatarImage.size.h + UI_OUTLINE_WIDTH, 200, 32 );
 
 		model.SetRect( 700, avatar.pos.y + avatar.size.h + 36 + UI_OUTLINE_WIDTH, 260, 32 );
