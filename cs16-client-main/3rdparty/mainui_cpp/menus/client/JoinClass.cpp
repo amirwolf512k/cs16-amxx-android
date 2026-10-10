@@ -35,7 +35,6 @@ public:
 	}
 
 	void _Init();
-	void VidInit();
 	void Reload();
 
 	CMenuAction *AddButton( int key, const char *name, const char *modelname, Point pos );
@@ -43,15 +42,6 @@ public:
 	bool hasCzero;
 	CMenuPlayerModelView player;
 	CMenuAction text;
-
-	// the class buttons in creation order, with the resource/UI/
-	// Classmenu_*.res fieldNames that place them
-	CMenuAction *m_classBtns[6];
-	const char *m_classFields[6];
-	int m_numClassBtns;
-	CMenuAction *cancelBtn;
-	const char *m_resPaths[2];
-	int m_numResPaths;
 
 	void ConfirmSelection()
 	{
@@ -201,10 +191,6 @@ public:
 void CClientJoinClass::_Init()
 {
 
-	m_numClassBtns = 0;
-	m_numResPaths = 0;
-	m_resPaths[0] = m_resPaths[1] = NULL;
-
 	player.SetRect( 400, 180, 400, 284 );
 	player.backgroundColor = uiColorBlack;
 	player.colorStroke = uiPromptTextColor;
@@ -219,76 +205,14 @@ void CClientJoinClass::_Init()
 	text.iFlags |= QMF_INACTIVE;
 	text.SetCharSize( QM_TINYFONT );
 
-	// the pc class dialog carries a Cancel button (resource/UI/
-	// Classmenu_*.res); hidden until the resource places it
-	cancelBtn = CClientWindow::AddButton( '0', L( "Cstrike_Cancel" ), Point( 100, 580 ),
-		CEventCallback( VoidCb( &CMenuBaseWindow::Hide )) );
-	cancelBtn->Hide();
-
 	szName = L( "Cstrike_Join_Class" );
 	AddItem( player );
 	AddItem( text );
 }
 
-void CClientJoinClass::VidInit()
-{
-	BaseClass::VidInit();
-
-	if( !m_numResPaths )
-		return;
-
-	// the class select dialog of the retail client is built from
-	// resource/UI/Classmenu_TER.res / Classmenu_CT.res
-	CMenuResDialog res;
-
-	if( !LoadResLayout( res, m_resPaths, m_numResPaths ))
-		return;
-
-	if( !ResApplyFrame( res, "ClassMenu", 76, 0, 552, 448 ))
-		return;
-
-	ResApplyTitle( res, "joinClass" );
-
-	for( int i = 0; i < m_numClassBtns; i++ )
-		ResPlaceControl( res, m_classFields[i], m_classBtns[i] );
-
-	// the model preview lives in the ClassInfo panel area, clamped
-	// into the frame (the stock file lets the panel run past it)
-	const CMenuResBlock *info = res.FindControl( "ClassInfo" );
-
-	if( info )
-	{
-		int cx, cy, cw, ch;
-		info->RectSelf( m_resFrameW, m_resFrameH, cx, cy, cw, ch, RES_CLIENT_INSET );
-
-		if( cy + ch > m_resFrameH - 8 )
-			ch = m_resFrameH - cy - 8;
-
-		if( ch > 0 )
-			player.SetRect( cx, cy, cw, ch );
-
-		// the class name line sits where the stock file keeps
-		// classInfoLabel (above the panel, right column)
-		const CMenuResBlock *lbl = res.FindControl( "classInfoLabel" );
-
-		if( lbl )
-		{
-			int lx, ly, lw, lh;
-			lbl->RectSelf( m_resFrameW, m_resFrameH, lx, ly, lw, lh, RES_CLIENT_INSET );
-			text.SetRect( lx, ly, CMenuResBlock::ScaleX( m_resFrameW - RES_CLIENT_INSET ) - lx, lh + 8 );
-		}
-	}
-
-	if( cancelBtn && ResPlaceControl( res, "CancelButton", cancelBtn ))
-		cancelBtn->Show();
-}
-
 void CClientJoinClass::Reload()
 {
-	if( cancelBtn && !( cancelBtn->iFlags & QMF_HIDDEN ))
-		keys[0] = cancelBtn->onPressed;
-	else
-		keys[0].Reset();
+	keys[0].Reset();
 
 	text.SetText( "" );
 	player.eOverrideMode = CMenuPlayerModelView::PMV_SHOWIMAGE;
@@ -314,34 +238,25 @@ CMenuAction *CClientJoinClass::AddButton( int key, const char *name, const char 
 void CClientJoinClassT::_Init()
 {
 	m_szDefaultClass = "terror";
-	m_numResPaths = 1;
-	m_resPaths[0] = "resource/UI/Classmenu_TER.res";
-	m_classBtns[m_numClassBtns] = AddButton( '1', L( "Cstrike_Terror" ), "terror",
+	AddButton( '1', L( "Cstrike_Terror" ), "terror",
 		Point( 100, 180 ));
-	m_classFields[m_numClassBtns++] = "terror";
-	m_classBtns[m_numClassBtns] = AddButton( '2', L( "Cstrike_L337_Krew" ), "leet",
+	AddButton( '2', L( "Cstrike_L337_Krew" ), "leet",
 		Point( 100, 230 ));
-	m_classFields[m_numClassBtns++] = "leet";
-	m_classBtns[m_numClassBtns] = AddButton( '3', L( "Cstrike_Arctic" ), "arctic",
+	AddButton( '3', L( "Cstrike_Arctic" ), "arctic",
 		Point( 100, 280 ));
-	m_classFields[m_numClassBtns++] = "arctic";
-	m_classBtns[m_numClassBtns] = AddButton( '4', L( "Cstrike_Guerilla" ), "guerilla",
+	AddButton( '4', L( "Cstrike_Guerilla" ), "guerilla",
 		Point( 100, 330 ));
-	m_classFields[m_numClassBtns++] = "guerilla";
 	if( hasCzero )
 	{
-		m_classBtns[m_numClassBtns] = AddButton( '5', L( "Cstrike_Militia" ), "militia",
+		AddButton( '5', L( "Cstrike_Militia" ), "militia",
 			Point( 100, 380 ));
-		m_classFields[m_numClassBtns++] = "militia";
-		m_classBtns[m_numClassBtns] = AddButton( '6', L( "Cstrike_Auto_Select" ), "t_random",
+		AddButton( '6', L( "Cstrike_Auto_Select" ), "t_random",
 			Point( 100, 430 ));
-		m_classFields[m_numClassBtns++] = "autoselect_t";
 	}
 	else
 	{
-		m_classBtns[m_numClassBtns] = AddButton( '5', L( "Cstrike_Auto_Select" ), "t_random",
+		AddButton( '5', L( "Cstrike_Auto_Select" ), "t_random",
 			Point( 100, 430 ));
-		m_classFields[m_numClassBtns++] = "autoselect_t";
 	}
 
 	BaseClass::_Init();
@@ -350,34 +265,25 @@ void CClientJoinClassT::_Init()
 void CClientJoinClassCT::_Init()
 {
 	m_szDefaultClass = "urban";
-	m_numResPaths = 1;
-	m_resPaths[0] = "resource/UI/Classmenu_CT.res";
-	m_classBtns[m_numClassBtns] = AddButton( '1', L( "Cstrike_Urban" ), "urban",
+	AddButton( '1', L( "Cstrike_Urban" ), "urban",
 		Point( 100, 180 ));
-	m_classFields[m_numClassBtns++] = "urban";
-	m_classBtns[m_numClassBtns] = AddButton( '2', L( "Cstrike_GSG9" ), "gsg9",
+	AddButton( '2', L( "Cstrike_GSG9" ), "gsg9",
 		Point( 100, 230 ));
-	m_classFields[m_numClassBtns++] = "gsg9";
-	m_classBtns[m_numClassBtns] = AddButton( '3', L( "Cstrike_SAS" ), "sas",
+	AddButton( '3', L( "Cstrike_SAS" ), "sas",
 		Point( 100, 280 ));
-	m_classFields[m_numClassBtns++] = "sas";
-	m_classBtns[m_numClassBtns] = AddButton( '4', L( "Cstrike_GIGN" ), "gign",
+	AddButton( '4', L( "Cstrike_GIGN" ), "gign",
 		Point( 100, 330 ));
-	m_classFields[m_numClassBtns++] = "gign";
 	if( hasCzero )
 	{
-		m_classBtns[m_numClassBtns] = AddButton( '5', L( "Cstrike_Spetsnaz" ), "spetsnaz",
+		AddButton( '5', L( "Cstrike_Spetsnaz" ), "spetsnaz",
 			Point( 100, 380 ));
-		m_classFields[m_numClassBtns++] = "spetsnaz";
-		m_classBtns[m_numClassBtns] = AddButton( '6', L( "Cstrike_Auto_Select" ), "ct_random",
+		AddButton( '6', L( "Cstrike_Auto_Select" ), "ct_random",
 			Point( 100, 430 ));
-		m_classFields[m_numClassBtns++] = "autoselect_ct";
 	}
 	else
 	{
-		m_classBtns[m_numClassBtns] = AddButton( '5', L( "Cstrike_Auto_Select" ), "ct_random",
+		AddButton( '5', L( "Cstrike_Auto_Select" ), "ct_random",
 			Point( 100, 430 ));
-		m_classFields[m_numClassBtns++] = "autoselect_ct";
 	}
 
 	BaseClass::_Init();

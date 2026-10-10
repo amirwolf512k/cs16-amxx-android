@@ -25,7 +25,6 @@ public:
 	CClientJoinGame() : BaseClass( "CClientJoinGame" ) {}
 
 	void _Init();
-	void VidInit();
 	void Reload();
 
 	bool hasSpectator;
@@ -33,9 +32,6 @@ public:
 	bool hasCancel;
 	CMenuAction *spectate;
 	CMenuAction *vipbutton;
-	CMenuAction *btnTer;
-	CMenuAction *btnCT;
-	CMenuAction *btnAuto;
 	CMenuAction *cancel;
 	CMenuAction text;
 	CMenuScrollView scroll;
@@ -65,16 +61,16 @@ private:
 void CClientJoinGame::_Init()
 {
 	CMenuAction *btn;
-	btn = btnTer = AddButton( '1', L( "Cstrike_Terrorist_Forces" ),
+	btn = AddButton( '1', L( "Cstrike_Terrorist_Forces" ),
 	                 Point( 100, 180 ), MakeCb( "jointeam 1" ) );
 
-	btn = btnCT = AddButton( '2', L( "Cstrike_CT_Forces" ),
+	btn = AddButton( '2', L( "Cstrike_CT_Forces" ),
 	                 Point( 100, 230 ), MakeCb( "jointeam 2" ) );
 
 	vipbutton = AddButton( '3', L( "Cstrike_VIP_Team" ),
 	                       Point( 100, 280 ), MakeCb( "jointeam 3" ) );
 
-	btn = btnAuto = AddButton( '5', L( "Cstrike_Team_AutoAssign" ),
+	btn = AddButton( '5', L( "Cstrike_Team_AutoAssign" ),
 	                 Point( 100, 380 ), MakeCb( "jointeam 5" ) );
 
 	spectate = AddButton( '6', L( "Cstrike_Menu_Spectate" ),
@@ -98,41 +94,6 @@ void CClientJoinGame::_Init()
 	AddItem( scroll );
 
 	szName = L("Cstrike_Join_Team");
-}
-
-void CClientJoinGame::VidInit()
-{
-	BaseClass::VidInit();
-
-	// the retail team select dialog is resource/UI/TeamMenu.res (some
-	// HLDS installs land it as Teammenu.res, try both); when the game
-	// ships it, the window and every button sit where the resource
-	// says - the way server plugins reskin this dialog on the pc by
-	// rewriting the file
-	static const char *paths[] =
-	{
-		"resource/UI/TeamMenu.res",
-		"resource/UI/Teammenu.res",
-	};
-
-	CMenuResDialog res;
-
-	if( !LoadResLayout( res, paths, 2 ))
-		return;
-
-	if( ResApplyFrame( res, "TeamMenu", 76, 0, 552, 448 ))
-	{
-		ResApplyTitle( res, "joinTeam" );
-		ResPlaceControl( res, "terbutton", btnTer );
-		ResPlaceControl( res, "ctbutton", btnCT );
-		ResPlaceControl( res, "vipbutton", vipbutton );
-		ResPlaceControl( res, "autobutton", btnAuto );
-		ResPlaceControl( res, "specbutton", spectate );
-		ResPlaceControl( res, "CancelButton", cancel );
-		// the map briefing panel, the pc dialog renders the map
-		// description html there
-		ResPlaceControl( res, "MapInfo", &scroll );
-	}
 }
 
 void CClientJoinGame::Reload()
