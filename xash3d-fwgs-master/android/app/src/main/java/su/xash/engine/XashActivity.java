@@ -1718,6 +1718,10 @@ public class XashActivity extends SDLActivity {
                 bannerLp.topMargin = dp( 8 );
                 dialog.addView( banner, bannerLp );
                 mLoadingBanner = banner;
+
+                // assign before the reader thread starts, its ui callback
+                // checks this exact reference before touching the view
+                mLoadingOverlay = overlay;
                 loadLoadingBanner( overlay, banner );
 
                 LinearLayout cancelRow = new LinearLayout( this );
