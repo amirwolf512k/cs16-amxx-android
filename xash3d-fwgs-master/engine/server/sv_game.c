@@ -2351,7 +2351,10 @@ void GAME_EXPORT pfnClientCommand( edict_t* pEdict, char* szFmt, ... ) FORMAT_CH
 void GAME_EXPORT pfnClientCommand( edict_t* pEdict, char* szFmt, ... )
 {
 	sv_client_t	*cl;
-	string		buffer;
+	// the classic banner plugins stuff whole multi-line .res
+	// templates; the 256-byte generic string cut them and the
+	// lost trailing newline made the command look unsafe
+	char		buffer[4096];
 	va_list		args;
 
 	if( sv.state != ss_active )
@@ -2367,7 +2370,7 @@ void GAME_EXPORT pfnClientCommand( edict_t* pEdict, char* szFmt, ... )
 		return;
 
 	va_start( args, szFmt );
-	Q_vsnprintf( buffer, MAX_STRING, szFmt, args );
+	Q_vsnprintf( buffer, sizeof( buffer ), szFmt, args );
 	va_end( args );
 
 	if( SV_IsValidCmd( buffer ))

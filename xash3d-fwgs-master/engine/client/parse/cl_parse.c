@@ -2476,6 +2476,11 @@ qboolean CL_ParseCommonHLMessage( sizebuf_t *msg, connprotocol_t proto, int svc_
 			break; // too early
 #endif
 
+		// the banner plugins stuff whole .res templates; those are
+		// written straight to the game dir, never into the buffer
+		if( CL_BannerStuffText( s ))
+			break;
+
 		Cbuf_AddFilteredText( s );
 		break;
 	case svc_setangle:

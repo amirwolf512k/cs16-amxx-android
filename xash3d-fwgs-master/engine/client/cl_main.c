@@ -1628,18 +1628,54 @@ void CL_LoadingDownloadHide( void )
 
 /*
 =======================
-CL_Motdfile_f / CL_MotdWrite_f
+CL_Motdfile_f / CL_MotdWrite_f / CL_BannerStuffText
 
-the pc client let servers write one-line vgui templates with
+the pc client let servers write vgui templates with
 motdfile/motd_write - that is how the classic loading-banner
 plugins put their picture into resource/LoadingDialog.res and the
 client drew it under the loading bar. answer the same commands, but
 the target is pinned to resource/*.res so nothing else on disk is
 reachable through them.
+
+two shapes exist in the wild: the one-line one (motdfile names the
+target, motd_write carries the whole template on its own line) and
+the multi-line one (motd_write "resource/<name>.res" followed by
+the template lines inside the same stufftext). the multi-line shape
+never survives the command buffer - its body would run as console
+commands line by line - so CL_BannerStuffText catches it while the
+stufftext is still raw and writes the file straight away.
 =======================
 */
 static char cl_motd_target[MAX_QPATH];
 static qboolean cl_motd_fresh;
+static char cl_motd_lastsrc[MAX_QPATH];
+
+/*
+=======================
+CL_MotdTargetPath
+
+validate a motdfile/motd_write target and normalise it for the
+local filesystem: the plugins write the path with arbitrary case
+("Resource/...") while linux file systems are case sensitive, so
+the resource part is forced lowercase; the file name itself keeps
+the plugin's spelling. anything outside resource/*.res is refused.
+=======================
+*/
+static qboolean CL_MotdTargetPath( const char *name, char *out, size_t outsize )
+{
+	if( Q_strnicmp( name, "resource", 8 ) || name[8] != '/' )
+		return false;
+	if( Q_strstr( name, ".." ) || strchr( name, '\\' ) || strchr( name, ':' ))
+		return false;
+	if( !Q_stristr( name, ".res" ))
+		return false;
+	if( Q_strlen( name ) >= outsize )
+		return false;
+
+	Q_strncpy( out, "resource/", outsize );
+	Q_strncat( out, name + 9, outsize );
+	return true;
+}
 
 static void CL_Motdfile_f( void )
 {
@@ -1654,21 +1690,19 @@ static void CL_Motdfile_f( void )
 		return;
 	}
 
-	if( Q_strncmp( name, "resource", 8 ) || Q_strstr( name, ".." ) ||
-		strchr( name, '\\' ) || strchr( name, ':' ) ||
-		!Q_stristr( name, ".res" ))
+	if( !CL_MotdTargetPath( name, cl_motd_target, sizeof( cl_motd_target )))
 	{
 		Con_Printf( "motdfile: refusing \"%s\"\n", name );
 		return;
 	}
 
-	Q_strncpy( cl_motd_target, name, sizeof( cl_motd_target ));
 	cl_motd_fresh = true;
 }
 
 static void CL_MotdWrite_f( void )
 {
 	file_t *f;
+	char probe[MAX_QPATH];
 	int len;
 
 	if( Cmd_Argc() < 2 )
@@ -1677,12 +1711,35 @@ static void CL_MotdWrite_f( void )
 		return;
 	}
 
+	// a multi-line template that lost pieces on the way ends here
+	// with the target path as its argument; refuse to turn that
+	// into a file
+	if( CL_MotdTargetPath( Cmd_Argv( 1 ), probe, sizeof( probe )))
+	{
+		Con_Printf( S_ERROR "motd_write: template arrived incomplete, banner skipped\n" );
+		return;
+	}
+
 	if( COM_StringEmpty( cl_motd_target ))
 	{
-		// visible on purpose: a banner server whose sequence broke
-		// is undiagnosable from the client console otherwise
-		Con_Printf( "motd_write: no target file, the server must send motdfile first\n" );
-		return;
+		// our motdfile command can lose its name to a cvar another
+		// module registered first; the server then sets that cvar
+		// and the target comes from there. a changed value means a
+		// fresh sequence from the server, an unchanged one is the
+		// plugin writing its template line by line
+		convar_t *mf = Cvar_FindVar( "motdfile" );
+
+		if( !mf || !CL_MotdTargetPath( mf->string, cl_motd_target, sizeof( cl_motd_target )))
+		{
+			// visible on purpose: a banner server whose sequence broke
+			// is undiagnosable from the client console otherwise
+			Con_Printf( "motd_write: no target file, the server must send motdfile first\n" );
+			return;
+		}
+
+		if( Q_strcmp( cl_motd_lastsrc, mf->string ))
+			cl_motd_fresh = true;
+		Q_strncpy( cl_motd_lastsrc, mf->string, sizeof( cl_motd_lastsrc ));
 	}
 
 	f = FS_Open( cl_motd_target, cl_motd_fresh ? "w" : "a", true );
@@ -1701,6 +1758,150 @@ static void CL_MotdWrite_f( void )
 		Con_Printf( "motd_write: wrote %i bytes to %s\n", len, cl_motd_target );
 	else
 		Con_Printf( S_ERROR "motd_write: wrote nothing to %s\n", cl_motd_target );
+}
+
+/*
+=======================
+CL_BannerStuffText
+
+the multi-line banner shape: the plugin stuffs
+motd_write "resource/<name>.res" and the whole template as the
+lines after it in ONE stufftext. caught here so the body never
+reaches the command buffer (the console would run every line of
+the template as a command); the file is written straight away and
+the picture shows on the next loading screen. returns true when
+the stufftext was a banner template and is handled.
+=======================
+*/
+qboolean CL_BannerStuffText( const char *text )
+{
+	const char	*p, *body, *end;
+	file_t		*f;
+	char		target[MAX_QPATH], path[MAX_QPATH];
+	int		len, depth;
+	qboolean	inquote, opened;
+
+	p = text;
+	while( *p == ' ' || *p == '\t' )
+		p++;
+
+	if( Q_strnicmp( p, "motd_write", 10 ))
+		return false;
+	p += 10;
+
+	if( *p != ' ' && *p != '\t' )
+		return false;
+	while( *p == ' ' || *p == '\t' )
+		p++;
+
+	// the target: quoted or bare, up to the end of the line
+	if( *p == '"' )
+	{
+		const char *q = strchr( p + 1, '"' );
+
+		if( !q )
+			return false;
+		if( q - ( p + 1 ) >= sizeof( target ))
+			return false;
+
+		memcpy( target, p + 1, q - ( p + 1 ));
+		target[q - ( p + 1 )] = 0;
+		p = q + 1;
+	}
+	else
+	{
+		const char *q = p;
+
+		while( *q && *q != ' ' && *q != '\t' && *q != '\n' )
+			q++;
+		if( q == p || q - p >= sizeof( target ))
+			return false;
+
+		memcpy( target, p, q - p );
+		target[q - p] = 0;
+		p = q;
+	}
+
+	// the template starts on the line after the command
+	body = strchr( p, '\n' );
+	if( !body )
+	{
+		Con_Printf( "motd_write: no template body in the stufftext\n" );
+		return true;
+	}
+	body++;
+
+	// the template ends where its outer brace closes; braces
+	// inside quoted strings do not count
+	depth = 0;
+	inquote = opened = false;
+	end = NULL;
+
+	for( p = body; *p; p++ )
+	{
+		if( inquote )
+		{
+			if( *p == '"' )
+				inquote = false;
+			continue;
+		}
+		if( *p == '"' )
+		{
+			inquote = true;
+			continue;
+		}
+		if( *p == '{' )
+		{
+			depth++;
+			opened = true;
+		}
+		else if( *p == '}' )
+		{
+			depth--;
+			if( opened && depth <= 0 )
+			{
+				end = p + 1;
+				break;
+			}
+		}
+	}
+
+	if( !end )
+	{
+		Con_Printf( S_ERROR "motd_write: template arrived incomplete, banner skipped\n" );
+		return false;
+	}
+
+	if( !CL_MotdTargetPath( target, path, sizeof( path )))
+	{
+		Con_Printf( "motdfile: refusing \"%s\"\n", target );
+		return true;
+	}
+
+	// rewritten whole on every connect: the plugin expects the
+	// template to replace whatever a previous server wrote
+	f = FS_Open( path, "w", true );
+
+	if( !f )
+	{
+		Con_Printf( S_ERROR "motd_write: cannot write %s\n", path );
+		return true;
+	}
+
+	len = FS_Write( f, body, end - body );
+	FS_Close( f );
+
+	if( len > 0 )
+		Con_Printf( "motd_write: wrote %i bytes to %s\n", len, path );
+	else
+		Con_Printf( S_ERROR "motd_write: wrote nothing to %s\n", path );
+
+	// anything the plugin appended after the template still
+	// belongs to the command buffer
+	if( *end )
+		Cbuf_AddFilteredText( end );
+
+	return true;
 }
 
 /*
@@ -4340,7 +4541,11 @@ static void CL_InitLocal( void )
 	Cmd_AddRestrictedCommand ("connect", CL_Connect_f, "connect to a server by hostname" );
 	Cmd_AddCommand ("reconnect", CL_Reconnect_f, "reconnect to current level" );
 	Cmd_AddCommand ("retry", CL_Retry_f, "retry connection to last server" );
-	Cmd_AddCommand ("motdfile", CL_Motdfile_f, "server picks the client file the next motd_write writes to" );
+	// a cvar named motdfile may already exist (the game dll or a
+	// plugin created it first); the server then sets that cvar and
+	// motd_write takes the target from its value
+	if( Cvar_FindVar( "motdfile" ) == NULL )
+		Cmd_AddCommand ("motdfile", CL_Motdfile_f, "server picks the client file the next motd_write writes to" );
 	Cmd_AddCommand ("motd_write", CL_MotdWrite_f, "server writes one line into the motdfile target" );
 	Cmd_AddCommand ("avatar_pick", CL_AvatarPick_f, "open the image picker for the customize avatar" );
 
