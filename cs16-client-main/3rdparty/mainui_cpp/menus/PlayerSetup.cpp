@@ -121,14 +121,17 @@ public:
 		RemoveAll();
 		AddToTail( "(none)" );
 
-		filenames = EngFuncs::GetFilesList( "media/avatars/*.*", &numFiles, false );
+		// per-game: only this mod's own media/avatars shows up
+		// here, valve/cstrike/czero never share their lists
+		filenames = EngFuncs::GetFilesList( "media/avatars/*.*", &numFiles, true );
 
 		for( i = 0; i < numFiles; i++ )
 		{
 			CUtlString f = filenames[i];
 			char temp[256];
 
-			if( !f.BEndsWithCaseless( ".png" ) && !f.BEndsWithCaseless( ".bmp" ))
+			if( !f.BEndsWithCaseless( ".png" ) && !f.BEndsWithCaseless( ".bmp" )
+					&& !f.BEndsWithCaseless( ".jpg" ))
 				continue;
 
 			COM_FileBase( filenames[i], temp, sizeof( temp ));
@@ -146,11 +149,15 @@ public:
 				return 0;
 
 			snprintf( buf, size, "media/avatars/%s.png", name );
-			if( EngFuncs::FileExists( buf, false ))
+			if( EngFuncs::FileExists( buf, true ))
 				return 1;
 
 			snprintf( buf, size, "media/avatars/%s.bmp", name );
-			if( EngFuncs::FileExists( buf, false ))
+			if( EngFuncs::FileExists( buf, true ))
+				return 1;
+
+			snprintf( buf, size, "media/avatars/%s.jpg", name );
+			if( EngFuncs::FileExists( buf, true ))
 				return 1;
 
 			return 0;
@@ -165,6 +172,7 @@ public:
 	} avatarImage;
 
 	CMenuSpinControl avatar;
+	CMenuPicButton	btnChooseImage;
 	CMenuAction avatarHint;
 	bool hideAvatars;
 	CMenuColorPickerDialog	colorPickerDlg;
@@ -176,6 +184,7 @@ public:
 	void ParseLogoColorCvar();
 	void WriteLogoColorCvar();
 	void UpdateAvatarPreview();
+	void PickAvatarImage();
 
 	CMenuYesNoMessageBox msgBox;
 
@@ -469,6 +478,14 @@ void CMenuPlayerSetup::UpdateAvatarPreview( void )
 		avatarImage.hImage = EngFuncs::PIC_Load( filename, 0 );
 }
 
+void CMenuPlayerSetup::PickAvatarImage( void )
+{
+	// the engine hands this to the platform image picker; the
+	// chosen picture lands in this game's own media/avatars and
+	// cl_avatar is pointed at it, so every game keeps its own avatar
+	EngFuncs::ClientCmd( true, "avatar_pick" );
+}
+
 void CMenuPlayerSetup::ApplyColorToLogoPreview()
 {
 	logoImage.colorable = m_logoColorable;
@@ -738,6 +755,10 @@ void CMenuPlayerSetup::_Init( void )
 		// the model column is free, the avatar gets it whole
 		avatarImage.SetRect( 700, 370, 200, 200 );
 		avatar.SetRect( 700, avatarImage.pos.y + avatarImage.size.h + UI_OUTLINE_WIDTH, 200, 32 );
+
+		btnChooseImage.szName = L( "Choose image..." );
+		btnChooseImage.SetRect( 700, avatar.pos.y + avatar.size.h + UI_OUTLINE_WIDTH, 200, 32 );
+		btnChooseImage.onReleased = VoidCb( &CMenuPlayerSetup::PickAvatarImage );
 	}
 	else
 	{
@@ -746,7 +767,13 @@ void CMenuPlayerSetup::_Init( void )
 		avatarImage.SetRect( 700, 370, 200, 200 );
 		avatar.SetRect( 700, avatarImage.pos.y + avatarImage.size.h + UI_OUTLINE_WIDTH, 200, 32 );
 
-		model.SetRect( 700, avatar.pos.y + avatar.size.h + 36 + UI_OUTLINE_WIDTH, 260, 32 );
+		// the image picker takes the old breathing gap under the
+		// avatar picker, so nothing below walks further down
+		btnChooseImage.szName = L( "Choose image..." );
+		btnChooseImage.SetRect( 700, avatar.pos.y + avatar.size.h + UI_OUTLINE_WIDTH, 200, 32 );
+		btnChooseImage.onReleased = VoidCb( &CMenuPlayerSetup::PickAvatarImage );
+
+		model.SetRect( 700, btnChooseImage.pos.y + btnChooseImage.size.h + UI_OUTLINE_WIDTH, 260, 32 );
 		topColor.SetCoord( 700, model.pos.y + model.size.h + 20 );
 		bottomColor.SetCoord( 700, topColor.pos.y + 50 );
 	}
@@ -754,6 +781,7 @@ void CMenuPlayerSetup::_Init( void )
 	UpdateAvatarPreview();
 	AddItem( avatarImage );
 	AddItem( avatar );
+	AddItem( btnChooseImage );
 
 	AddItem( name );
 	AddItem( voiceEnable );
@@ -788,6 +816,16 @@ void CMenuPlayerSetup::Reload()
 		UpdateLogo();
 	}
 	if( !hideModels ) UpdateModel();
+
+	// the avatar list lives on the disk and changes while the game
+	// runs: the user drops pictures in, the image picker writes
+	// one, steam saves land. re-read the folder on every open,
+	// otherwise new files stay invisible until a restart
+	avatarsModel.Update();
+	avatar.Setup( &avatarsModel );
+	avatar.SetCurrentValue( 0.0f );
+	avatar.UpdateCvar( true );
+	UpdateAvatarPreview();
 }
 
 

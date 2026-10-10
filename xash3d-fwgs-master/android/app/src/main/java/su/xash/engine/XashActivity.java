@@ -1202,6 +1202,11 @@ public class XashActivity extends SDLActivity {
 
         private static native void nativeLoadingCancelled();
 
+        private static native void nativeAvatarPicked();
+
+        // the customize menu's "Choose image..." button
+        private static final int REQ_PICK_AVATAR = 4711;
+
         // ------------------------------------------------------------------
         // TAB avatars
         //
@@ -1306,6 +1311,88 @@ public class XashActivity extends SDLActivity {
                                                         avatarFetch( steamid64 );
                                                 }
                                         }, 60000 );
+                        }
+                });
+                t.setDaemon( true );
+                t.start();
+        }
+
+        /** the customize menu's "Choose image..." button: open the
+         *  system image chooser; the picked picture lands in this
+         *  game's own media/avatars as avatar_custom.png and cl_avatar
+         *  gets pointed at it, so valve/cstrike/czero each keep
+         *  their own avatar */
+        public void avatarPick() {
+                runOnUiThread( new Runnable() {
+                        @Override public void run() {
+                                try {
+                                        Intent pick = new Intent( Intent.ACTION_GET_CONTENT );
+                                        pick.addCategory( Intent.CATEGORY_OPENABLE );
+                                        pick.setType( "image/*" );
+                                        startActivityForResult( Intent.createChooser( pick, "Choose avatar image" ), REQ_PICK_AVATAR );
+                                } catch( Throwable t ) {
+                                        Log.w( TAG, "avatar picker start failed", t );
+                                }
+                        }
+                });
+        }
+
+        @Override
+        protected void onActivityResult( int requestCode, int resultCode, Intent data ) {
+                super.onActivityResult( requestCode, resultCode, data );
+
+                if( requestCode != REQ_PICK_AVATAR || resultCode != RESULT_OK
+                        || data == null || data.getData() == null )
+                        return;
+
+                final Uri uri = data.getData();
+
+                Thread t = new Thread( new Runnable() {
+                        @Override public void run() {
+                                try {
+                                        File dir = avatarDir();
+                                        if( dir == null ) {
+                                                consolePrintf( "Avatar: no writable media/avatars folder for this game" );
+                                                return;
+                                        }
+
+                                        // decode with a sample bound so a 12mp
+                                        // photo cannot blow the heap; the avatar
+                                        // sprite is tiny anyway
+                                        BitmapFactory.Options bounds = new BitmapFactory.Options();
+                                        bounds.inJustDecodeBounds = true;
+                                        java.io.InputStream in = getContentResolver().openInputStream( uri );
+                                        BitmapFactory.decodeStream( in, null, bounds );
+                                        if( in != null ) try { in.close(); } catch( Throwable ignored ) {}
+
+                                        int sample = 1;
+                                        while( bounds.outWidth / sample > 256 || bounds.outHeight / sample > 256 )
+                                                sample *= 2;
+
+                                        BitmapFactory.Options opts = new BitmapFactory.Options();
+                                        opts.inSampleSize = sample;
+                                        in = getContentResolver().openInputStream( uri );
+                                        Bitmap bmp = BitmapFactory.decodeStream( in, null, opts );
+                                        if( in != null ) try { in.close(); } catch( Throwable ignored ) {}
+
+                                        if( bmp == null ) {
+                                                consolePrintf( "Avatar: could not decode the picked image" );
+                                                return;
+                                        }
+
+                                        File out = new File( dir, "avatar_custom.png" );
+                                        java.io.FileOutputStream fos = new java.io.FileOutputStream( out );
+                                        bmp.compress( Bitmap.CompressFormat.PNG, 90, fos );
+                                        fos.close();
+                                        bmp.recycle();
+
+                                        consolePrintf( "Avatar: saved " + out.getName()
+                                                + " into " + dir.getName() + ", pointing cl_avatar at it" );
+                                        nativeAvatarPicked();
+                                } catch( Throwable t ) {
+                                        Log.w( TAG, "avatar pick failed", t );
+                                        consolePrintf( "Avatar: picking the image failed: " + t );
+                                }
                         }
                 });
                 t.setDaemon( true );

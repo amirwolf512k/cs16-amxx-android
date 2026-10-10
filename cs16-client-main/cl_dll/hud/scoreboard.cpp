@@ -104,6 +104,10 @@ static float s_flAvatarNextProbe[MAX_PLAYERS+1];
 static bool s_pAvatarWarned[MAX_PLAYERS+1];
 static cvar_t *cl_avatar = NULL;
 
+// mirrors cl_avatar so a pick made while the map runs is seen
+// as a cvar move and the cached sprites get re-probed
+static char s_pAvatarCvarCache[64];
+
 // account number out of a colon sid tail: "0:905" and "0:0:905"
 // both spell STEAM_0:0:905 - the number after the last colon is the
 // id half, the one right before it the auth bit
@@ -213,6 +217,24 @@ static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
 	char path[256], sid[128] = "";
 	int account = 0;
 
+	// the customize picker (or the console) can repoint cl_avatar
+	// while the map runs; drop the cached sprites the moment it
+	// moves so the new picture shows up on the next probe
+	if( cl_avatar && strncmp( s_pAvatarCvarCache, cl_avatar->string,
+		sizeof( s_pAvatarCvarCache )))
+	{
+		int i;
+
+		for( i = 0; i <= MAX_PLAYERS; i++ )
+		{
+			s_pAvatarModel[i] = NULL;
+			s_pAvatarWarned[i] = false;
+		}
+
+		strncpy( s_pAvatarCvarCache, cl_avatar->string, sizeof( s_pAvatarCvarCache ) - 1 );
+		s_pAvatarCvarCache[sizeof( s_pAvatarCvarCache ) - 1] = 0;
+	}
+
 	if( s_pAvatarModel[slot] )
 		return s_pAvatarModel[slot];
 
@@ -236,10 +258,12 @@ static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
 		}
 		else
 		{
-			static const char *exts[] = { "png", "bmp", "tga" };
+			// the picker saves png, but a manually dropped jpg
+			// must still draw when the user points cl_avatar at it
+			static const char *exts[] = { "png", "bmp", "jpg", "tga" };
 			int e;
 
-			for( e = 0; e < 3 && !s_pAvatarModel[slot]; e++ )
+			for( e = 0; e < 4 && !s_pAvatarModel[slot]; e++ )
 			{
 				snprintf( path, sizeof( path ), "media/avatars/%s.%s",
 					cl_avatar->string, exts[e] );

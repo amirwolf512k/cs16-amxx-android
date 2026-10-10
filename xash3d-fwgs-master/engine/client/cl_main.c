@@ -1438,6 +1438,24 @@ void CL_AvatarUserInfo( const char *sid )
 }
 
 /*
+==================
+CL_AvatarPick_f
+
+customize menu: open the platform image picker. the chosen
+picture lands in this game's own media/avatars and cl_avatar
+gets pointed at it once Host_ClientBegin sees the result
+==================
+*/
+static void CL_AvatarPick_f( void )
+{
+#if XASH_ANDROID
+	Android_AvatarPick();
+#else
+	Con_Printf( "avatar_pick is only available on Android\n" );
+#endif
+}
+
+/*
 =======================
 Android loading window progress
 
@@ -4316,6 +4334,7 @@ static void CL_InitLocal( void )
 	Cmd_AddCommand ("retry", CL_Retry_f, "retry connection to last server" );
 	Cmd_AddCommand ("motdfile", CL_Motdfile_f, "server picks the client file the next motd_write writes to" );
 	Cmd_AddCommand ("motd_write", CL_MotdWrite_f, "server writes one line into the motdfile target" );
+	Cmd_AddCommand ("avatar_pick", CL_AvatarPick_f, "open the image picker for the customize avatar" );
 
 	Cmd_AddRestrictedCommand ("rcon", CL_Rcon_f, "sends a command to the server console (rcon_password and rcon_address required)" );
 
@@ -4379,6 +4398,19 @@ void Host_ClientBegin( void )
 	// here is where running "disconnect" is safe
 	if( Android_LoadingCancelled( ))
 		Cbuf_AddText( "disconnect\n" );
+
+	// the customize image picker answers from the UI thread too; by
+	// the time the flag shows up the picture is already saved in
+	// this game's media/avatars, so pointing cl_avatar at it is safe
+	if( Android_AvatarPickResult( ))
+	{
+		// cl_avatar may not exist yet while only the main menu runs;
+		// create it archived so the pick survives the restart
+		if( Cvar_FindVar( "cl_avatar" ))
+			Cvar_Set( "cl_avatar", "avatar_custom" );
+		else
+			Cvar_Get( "cl_avatar", "avatar_custom", FCVAR_ARCHIVE, "customize avatar picture" );
+	}
 #endif
 
 	// if client is not active, do nothing

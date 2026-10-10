@@ -111,6 +111,8 @@ void Android_LoadingDownload( const char *file, float percent, const char *statu
 void Android_LoadingHide( void );
 qboolean Android_LoadingCancelled( void ); // true once after the window Cancel was pressed
 void Android_AvatarFetch( uint64_t steamid64 ); // pull a steam avatar for the scoreboard
+void Android_AvatarPick( void ); // open the image picker for the customize avatar
+qboolean Android_AvatarPickResult( void ); // true once after the picker saved the picture
 #endif
 
 #if XASH_WIN32

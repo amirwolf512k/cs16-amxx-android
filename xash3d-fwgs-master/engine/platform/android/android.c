@@ -40,6 +40,7 @@ struct jnimethods_s
         jmethodID loadingDownload; // second bar: current file, its fill and counters
         jmethodID loadingHide;
         jmethodID avatarFetch; // steam avatar for the scoreboard
+        jmethodID avatarPick; // customize avatar image picker
 } jni;
 
 // dialog visibility state so the client dll can
@@ -49,6 +50,11 @@ static qboolean g_motd_dialog_open = false;
 // set from the UI thread when the player presses Cancel on the loading
 // window; the engine picks it up on its own thread and disconnects
 static qboolean g_loading_cancelled = false;
+
+// set from the UI thread after the avatar image picker saved the
+// picked picture into the game's media/avatars; the engine picks
+// it up on its own thread and points cl_avatar at the file
+static qboolean g_avatar_picked = false;
 
 /*
 ========================
@@ -186,6 +192,35 @@ void Android_AvatarFetch( uint64_t steamid64 )
                 (*jni.env)->ExceptionClear( jni.env );
 }
 
+/*
+========================
+Android_AvatarPick
+
+the customize menu asked for the image picker: the activity opens
+the system chooser, saves the picked picture into
+<gamedir>/media/avatars/avatar_custom.png and flags the result
+back through Android_AvatarPickResult.
+========================
+*/
+void Android_AvatarPick( void )
+{
+        if( !jni.env || !jni.activity || !jni.avatarPick )
+                return;
+
+        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.avatarPick );
+
+        if( (*jni.env)->ExceptionCheck( jni.env ))
+                (*jni.env)->ExceptionClear( jni.env );
+}
+
+qboolean Android_AvatarPickResult( void )
+{
+        qboolean picked = g_avatar_picked;
+
+        g_avatar_picked = false;
+        return picked;
+}
+
 qboolean Android_LoadingCancelled( void )
 {
         qboolean cancelled = g_loading_cancelled;
@@ -213,6 +248,7 @@ void Android_Init( void )
         jni.loadingDownload = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingDownload", "(Ljava/lang/String;FLjava/lang/String;Ljava/lang/String;)V" );
         jni.loadingHide = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingHide", "()V" );
         jni.avatarFetch = (*jni.env)->GetMethodID( jni.env, jni.actcls, "avatarFetch", "(J)V" );
+        jni.avatarPick = (*jni.env)->GetMethodID( jni.env, jni.actcls, "avatarPick", "()V" );
         // a failed lookup leaves a pending exception; clear it so
         // nothing downstream (filesystem assets, SDL) trips over it
         if( (*jni.env)->ExceptionCheck( jni.env ))
@@ -379,6 +415,15 @@ JNIEXPORT void JNICALL Java_su_xash_engine_XashActivity_nativeLoadingCancelled( 
         (void)env;
         (void)clazz;
         g_loading_cancelled = true;
+}
+
+// the avatar image picker finished (UI thread). Static native
+// resolved by symbol lookup, like nativeLoadingCancelled.
+JNIEXPORT void JNICALL Java_su_xash_engine_XashActivity_nativeAvatarPicked( JNIEnv *env, jclass clazz )
+{
+        (void)env;
+        (void)clazz;
+        g_avatar_picked = true;
 }
 
 /*
