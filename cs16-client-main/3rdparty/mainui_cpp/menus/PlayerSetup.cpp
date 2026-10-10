@@ -139,7 +139,30 @@ public:
 			AddToTail( temp );
 		}
 		}
+
+		int GetFullPath( char *buf, size_t size, const char *name )
+		{
+			if( !name || !name[0] || !stricmp( name, "(none)" ))
+				return 0;
+
+			snprintf( buf, size, "media/avatars/%s.png", name );
+			if( EngFuncs::FileExists( buf, false ))
+				return 1;
+
+			snprintf( buf, size, "media/avatars/%s.bmp", name );
+			if( EngFuncs::FileExists( buf, false ))
+				return 1;
+
+			return 0;
+		}
 	} avatarsModel;
+
+	class CMenuAvatarPreview : public CMenuBaseItem
+	{
+	public:
+		virtual void Draw();
+		HIMAGE hImage;
+	} avatarImage;
 
 	CMenuSpinControl avatar;
 	CMenuAction avatarHint;
@@ -152,6 +175,7 @@ public:
 
 	void ParseLogoColorCvar();
 	void WriteLogoColorCvar();
+	void UpdateAvatarPreview();
 
 	CMenuYesNoMessageBox msgBox;
 
@@ -222,6 +246,29 @@ void CMenuPlayerSetup::CMenuLogoPreview::Draw()
 	else
 		UI_DrawRectangle( m_scPos, m_scSize, uiInputFgColor );
 
+}
+
+void CMenuPlayerSetup::CMenuAvatarPreview::Draw()
+{
+	if( !hImage )
+	{
+		UI_FillRect( m_scPos, m_scSize, uiPromptBgColor );
+		UI_DrawString( font, m_scPos, m_scSize, L( "No avatar" ), colorBase, m_scChSize, QM_CENTER, ETF_SHADOW );
+	}
+	else
+	{
+		EngFuncs::PIC_Set( hImage, 255, 255, 255 );
+		EngFuncs::PIC_DrawTrans( m_scPos, m_scSize );
+	}
+
+	int textHeight = m_scPos.y - (m_scChSize * 1.5f);
+	uint textflags = ( iFlags & QMF_DROPSHADOW ) ? ETF_SHADOW : 0;
+	UI_DrawString( font, m_scPos.x, textHeight, m_scSize.w, m_scChSize, szName, uiColorHelp, m_scChSize, QM_LEFT, textflags | ETF_FORCECOL | ETF_NOSIZELIMIT );
+
+	if( eFocusAnimation == QM_HIGHLIGHTIFFOCUS && IsCurrentSelected() )
+		UI_DrawRectangle( m_scPos, m_scSize, uiInputTextColor );
+	else
+		UI_DrawRectangle( m_scPos, m_scSize, uiInputFgColor );
 }
 
 /*
@@ -409,6 +456,17 @@ void CMenuPlayerSetup::ApplyColorToImagePreview()
 {
 	EngFuncs::ProcessImage( view.hPlayerImage, -1,
 		topColor.GetCurrentValue(), bottomColor.GetCurrentValue() );
+}
+
+void CMenuPlayerSetup::UpdateAvatarPreview( void )
+{
+	char filename[256];
+	const char *name = avatar.GetCurrentString();
+
+	avatarImage.hImage = 0;
+
+	if( avatarsModel.GetFullPath( filename, sizeof( filename ), name ))
+		avatarImage.hImage = EngFuncs::PIC_Load( filename, 0 );
 }
 
 void CMenuPlayerSetup::ApplyColorToLogoPreview()
@@ -668,13 +726,33 @@ void CMenuPlayerSetup::_Init( void )
 	// always offer the picker: the engine seeds a starter set into
 	// media/avatars on first map load, and an empty "(none)" list
 	// still lets you clear a saved cl_avatar
-	avatarHint.szName = L( "Avatar image" );
-	avatarHint.colorBase = uiColorHelp;
-	avatarHint.SetRect( 460, btnChooseColor.pos.y + btnChooseColor.size.h + 28, 200, 24 );
-
 	avatar.Setup( &avatarsModel );
 	avatar.LinkCvar( "cl_avatar", CMenuEditable::CVAR_STRING );
-	avatar.SetRect( 460, avatarHint.pos.y + avatarHint.size.h + UI_OUTLINE_WIDTH, 200, 32 );
+	avatar.onChanged = VoidCb( &CMenuPlayerSetup::UpdateAvatarPreview );
+
+	if( hideModels && ( gMenu.m_gameinfo.flags & GFL_NOMODELS ))
+	{
+		// the model column sits empty on this game, so the avatar
+		// moves to the right side across from the spray preview,
+		// box and picture first, picker under it
+		avatarImage.szName = L( "Avatar image" );
+		avatarImage.SetRect( 700, 370, 200, 200 );
+		avatar.SetRect( 700, avatarImage.pos.y + avatarImage.size.h + UI_OUTLINE_WIDTH, 200, 32 );
+
+		UpdateAvatarPreview();
+		AddItem( avatarImage );
+		AddItem( avatar );
+	}
+	else
+	{
+		avatarHint.szName = L( "Avatar image" );
+		avatarHint.colorBase = uiColorHelp;
+		avatarHint.SetRect( 460, btnChooseColor.pos.y + btnChooseColor.size.h + 28, 200, 24 );
+		avatar.SetRect( 460, avatarHint.pos.y + avatarHint.size.h + UI_OUTLINE_WIDTH, 200, 32 );
+
+		AddItem( avatarHint );
+		AddItem( avatar );
+	}
 
 	AddItem( name );
 	AddItem( voiceEnable );

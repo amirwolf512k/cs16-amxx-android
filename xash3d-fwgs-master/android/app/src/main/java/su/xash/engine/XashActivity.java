@@ -1424,21 +1424,22 @@ public class XashActivity extends SDLActivity {
                 mStatMap = "";
                 mStatMax = "";
 
-                DisplayMetrics dm = getResources().getDisplayMetrics();
-                int screenW = dm.widthPixels;
-
                 FrameLayout overlay = new FrameLayout( this );
                 overlay.setBackgroundColor( LOADING_SHADE );
 
+                // ---- top-left stats block, where the CS 1.6 loading
+                // screen carried the server / map / slots rows ----
                 LinearLayout panel = new LinearLayout( this );
                 panel.setOrientation( LinearLayout.VERTICAL );
                 panel.setBackground( makeLoadingPanelBackground() );
-                int pad = dp( 14 );
+                int pad = dp( 12 );
                 panel.setPadding( pad, pad, pad, pad );
 
                 FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
-                        Math.round( screenW * 0.78f ), ViewGroup.LayoutParams.WRAP_CONTENT );
-                panelLp.gravity = Gravity.CENTER;
+                        Math.round( getResources().getDisplayMetrics().widthPixels * 0.46f ),
+                        ViewGroup.LayoutParams.WRAP_CONTENT );
+                panelLp.gravity = Gravity.TOP | Gravity.START;
+                panelLp.setMargins( dp( 14 ), dp( 14 ), 0, 0 );
                 overlay.addView( panel, panelLp );
 
                 // title row: the CS mark + Loading...
@@ -1464,7 +1465,6 @@ public class XashActivity extends SDLActivity {
                 panel.addView( titleRow, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
 
-                // stats block, the same rows the PC loading dialog showed
                 LinearLayout stats = new LinearLayout( this );
                 stats.setOrientation( LinearLayout.VERTICAL );
 
@@ -1476,16 +1476,26 @@ public class XashActivity extends SDLActivity {
                         ( mStatMax.length() > 0 ? mStatMax : "-" ));
 
                 LinearLayout.LayoutParams statsLp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
-                statsLp.topMargin = dp( 10 );
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                statsLp.topMargin = dp( 8 );
                 panel.addView( stats, statsLp );
 
-                LoadingBar bar = new LoadingBar( this );
-                LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, dp( 18 ));
-                barLp.topMargin = dp( 12 );
-                panel.addView( bar, barLp );
-                mLoadingBar = bar;
+                // ---- bottom strip: the server's own picture over the
+                // segmented bar, the part of the loading screen the
+                // servers could customize ----
+                LinearLayout bottom = new LinearLayout( this );
+                bottom.setOrientation( LinearLayout.VERTICAL );
+                bottom.setPadding( dp( 14 ), dp( 6 ), dp( 14 ), dp( 10 ));
+
+                ImageView banner = new ImageView( this );
+                banner.setScaleType( ImageView.ScaleType.FIT_CENTER );
+                banner.setAdjustViewBounds( true );
+                banner.setMaxHeight( dp( 140 ));
+                banner.setVisibility( View.GONE );
+                LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                bottom.addView( banner, bannerLp );
+                mLoadingBanner = banner;
 
                 TextView status = new TextView( this );
                 status.setText( mLoadingServer.isEmpty() ? "Loading..."
@@ -1495,19 +1505,16 @@ public class XashActivity extends SDLActivity {
                 status.setSingleLine( false );
                 LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
-                statusLp.topMargin = dp( 8 );
-                panel.addView( status, statusLp );
+                statusLp.topMargin = dp( 6 );
+                bottom.addView( status, statusLp );
                 mLoadingStatus = status;
 
-                ImageView banner = new ImageView( this );
-                banner.setScaleType( ImageView.ScaleType.FIT_CENTER );
-                banner.setAdjustViewBounds( true );
-                banner.setVisibility( View.GONE );
-                LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
-                bannerLp.topMargin = dp( 10 );
-                panel.addView( banner, bannerLp );
-                mLoadingBanner = banner;
+                LoadingBar bar = new LoadingBar( this );
+                LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp( 18 ));
+                barLp.topMargin = dp( 6 );
+                bottom.addView( bar, barLp );
+                mLoadingBar = bar;
 
                 LinearLayout cancelRow = new LinearLayout( this );
                 cancelRow.setGravity( Gravity.END );
@@ -1533,12 +1540,18 @@ public class XashActivity extends SDLActivity {
 
                 LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
-                cancelLp.topMargin = dp( 12 );
-                panel.addView( cancelRow, cancelLp );
+                cancelLp.topMargin = dp( 6 );
+                bottom.addView( cancelRow, cancelLp );
+
+                FrameLayout.LayoutParams bottomLp = new FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                bottomLp.gravity = Gravity.BOTTOM | Gravity.START;
+                overlay.addView( bottom, bottomLp );
 
                 mLoadingOverlay = overlay;
 
-                // tap the dark area to collapse/expand the panel
+                // tap the dark area to fold the stats block away, the
+                // game underneath stays covered until the map is ready
                 overlay.setOnClickListener( new View.OnClickListener() {
                         @Override public void onClick( View v ) {
                                 boolean show = panel.getVisibility() != View.VISIBLE;

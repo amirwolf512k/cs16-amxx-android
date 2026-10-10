@@ -1693,6 +1693,14 @@ static void CL_Connect_f( void )
 	memset( &cls.bandwidth_test, 0, sizeof( cls.bandwidth_test ));
 	cls.spectator = false;
 	cls.signon = 0;
+
+#if XASH_ANDROID
+	// raise the CS 1.6 style loading window right away, the console
+	// handshakes underneath it. SCR_BeginLoadingPlaque only ever ran
+	// for local loads and changelevels, so joining a server sat on
+	// the bare console until the map was already coming down.
+	Android_LoadingShow( server );
+#endif
 }
 
 /*
@@ -2098,6 +2106,10 @@ static void CL_Reconnect_f( void )
 		cls.signon = 0;
 		cls.net_protocol = proto; // don't change protocol
 
+#if XASH_ANDROID
+		Android_LoadingShow( cls.servername );
+#endif
+
 		Con_Printf( "reconnecting...\n" );
 	}
 }
@@ -2139,6 +2151,10 @@ static void CL_Retry_f( void )
 	memset( &cls.bandwidth_test, 0, sizeof( cls.bandwidth_test ));
 	cls.spectator = false;
 	cls.signon = 0;
+
+#if XASH_ANDROID
+	Android_LoadingShow( cls.servername );
+#endif
 }
 
 /*

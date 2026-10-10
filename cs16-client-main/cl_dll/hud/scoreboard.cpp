@@ -101,6 +101,7 @@ static struct Column
 
 static struct model_s *s_pAvatarModel[MAX_PLAYERS+1];
 static float s_flAvatarNextProbe[MAX_PLAYERS+1];
+static bool s_pAvatarIsBadge[MAX_PLAYERS+1];
 static cvar_t *cl_avatar = NULL;
 
 // reunion/dproto servers put the steamid into userinfo "*sid";
@@ -146,12 +147,17 @@ static bool Scoreboard_AvatarAccount( const char *sid, int *account )
 static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
 {
 	char path[256], sid[128];
-	int account;
+	int account = 0;
+	unsigned hash = 0;
 
 	if( s_pAvatarModel[slot] )
-		return s_pAvatarModel[slot];
-
-	if( flTime < s_flAvatarNextProbe[slot] )
+	{
+		// a real avatar just stays; a stand-in badge keeps watching
+		// the clock so the steam photo replaces it once it lands
+		if( !s_pAvatarIsBadge[slot] || flTime < s_flAvatarNextProbe[slot] )
+			return s_pAvatarModel[slot];
+	}
+	else if( flTime < s_flAvatarNextProbe[slot] )
 		return NULL;
 
 	s_flAvatarNextProbe[slot] = flTime + AVATAR_PROBE_TIME;
@@ -184,14 +190,47 @@ static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
 	}
 	else
 	{
+		bool have_sid;
+
 		strncpy( sid, gEngfuncs.PlayerInfo_ValueForKey( slot, "*sid" ), sizeof( sid ) - 1 );
 		sid[sizeof( sid ) - 1] = 0;
 
-		if( !Scoreboard_AvatarAccount( sid, &account ))
-			return NULL;
+		have_sid = Scoreboard_AvatarAccount( sid, &account );
 
-		snprintf( path, sizeof( path ), "media/avatars/av_%d.png", account );
+		if( have_sid )
+		{
+			snprintf( path, sizeof( path ), "media/avatars/av_%d.png", account );
+			s_pAvatarModel[slot] = gEngfuncs.LoadMapSprite( path );
+			hash = ( unsigned )account;
+		}
+	}
+
+	if( !s_pAvatarModel[slot] )
+	{
+		// steam photo out of reach (bots carry no *sid, and the
+		// community pages answer nothing on filtered networks):
+		// hold a stable badge from the starter set so the row is
+		// not empty. the same player always lands on the same
+		// picture, and the real photo replaces the badge the
+		// moment it shows up on disk.
+		const char *nm = g_PlayerInfoList[slot].name;
+		static const char *const badges[] =
+		{
+			"logo_cs", "logo_16", "logo_vip", "logo_pro",
+			"logo_ace", "logo_top", "logo_gg", "logo_zm"
+		};
+
+		while( nm && *nm )
+			hash = hash * 31u + ( unsigned char )*nm++;
+
+		hash %= sizeof( badges ) / sizeof( badges[0] );
+		snprintf( path, sizeof( path ), "media/avatars/%s.png", badges[hash] );
 		s_pAvatarModel[slot] = gEngfuncs.LoadMapSprite( path );
+		s_pAvatarIsBadge[slot] = s_pAvatarModel[slot] != NULL;
+	}
+	else
+	{
+		s_pAvatarIsBadge[slot] = false;
 	}
 
 	return s_pAvatarModel[slot];
@@ -202,12 +241,14 @@ static void Scoreboard_AvatarsInit( void )
 	cl_avatar = CVAR_CREATE( "cl_avatar", "", FCVAR_ARCHIVE );
 	memset( s_pAvatarModel, 0, sizeof( s_pAvatarModel ));
 	memset( s_flAvatarNextProbe, 0, sizeof( s_flAvatarNextProbe ));
+	memset( s_pAvatarIsBadge, 0, sizeof( s_pAvatarIsBadge ));
 }
 
 static void Scoreboard_AvatarsReset( void )
 {
 	memset( s_pAvatarModel, 0, sizeof( s_pAvatarModel ));
 	memset( s_flAvatarNextProbe, 0, sizeof( s_flAvatarNextProbe ));
+	memset( s_pAvatarIsBadge, 0, sizeof( s_pAvatarIsBadge ));
 }
 
 // draws the avatar left of the name and returns the shifted name x
@@ -578,7 +619,7 @@ int CHudScoreboard :: DrawPlayers( float list_slot, int nameoffset, const char *
 		int highest_frags = -99999;	int lowest_deaths = 99999;
 		int best_player = 0;
 
-		for ( int i = 1; i < MAX_PLAYERS; i++ )
+		for ( int i = 1; i <= MAX_PLAYERS; i++ )
 		{
 			if ( g_PlayerInfoList[i].name && g_PlayerExtraInfo[i].frags >= highest_frags )
 			{
