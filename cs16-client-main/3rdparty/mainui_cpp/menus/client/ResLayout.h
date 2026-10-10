@@ -95,7 +95,7 @@ struct CMenuResBlock
 class CMenuResDialog
 {
 public:
-	CMenuResDialog() : m_root( NULL ), m_text( NULL ) {}
+	CMenuResDialog() : m_root( NULL ), m_text( NULL ), m_loadedPath( NULL ) {}
 	~CMenuResDialog() { Free(); }
 
 	// try the given resource paths in order (the engine filesystem
@@ -105,6 +105,9 @@ public:
 
 	bool IsValid( void ) const { return m_root != NULL; }
 	const CMenuResBlock *Root( void ) const { return m_root; }
+
+	// the path that hit, for the load log
+	const char *LoadedPath( void ) const { return m_loadedPath; }
 
 	// a control anywhere in the file by its fieldName, the way vgui2
 	// collects the controls of a dialog resource
@@ -125,4 +128,5 @@ private:
 
 	CMenuResBlock *m_root;
 	char *m_text;
+	const char *m_loadedPath;
 };

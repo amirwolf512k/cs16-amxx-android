@@ -81,7 +81,14 @@ public:
 	// the mod dir to valve/ itself
 	bool LoadResLayout( CMenuResDialog &res, const char *const *paths, int count )
 	{
-		return res.Load( paths, count );
+		bool ok = res.Load( paths, count );
+
+		// one console line per dialog, tells a modded-server file
+		// apart from the stock fallback when something looks off
+		Con_Printf( "%s: %s\n", ok ? res.LoadedPath() : paths[0],
+			ok ? "dialog resource loaded" : "dialog resource missing, stock layout" );
+
+		return ok;
 	}
 
 	// the window frame from the .res dialog block; stores the raw res
@@ -120,7 +127,17 @@ public:
 		const char *lbl = b ? b->Str( "labelText" ) : NULL;
 
 		if( lbl && lbl[0] && lbl[0] != ' ' )
-			item->SetText( L( lbl[0] == '#' ? lbl + 1 : lbl ));
+		{
+			lbl = L( lbl[0] == '#' ? lbl + 1 : lbl );
+
+			// the language values carry a "&1"-style hotkey marker,
+			// AddButton strips it for the stock buttons, keep the
+			// resource-placed ones looking the same
+			if( lbl[0] == '&' )
+				lbl++;
+
+			item->SetText( lbl );
+		}
 
 		return true;
 	}
@@ -145,7 +162,13 @@ public:
 
 		if( !lbl || !lbl[0] || lbl[0] == ' ' ) return;
 
-		szName = L( lbl[0] == '#' ? lbl + 1 : lbl );
+		lbl = L( lbl[0] == '#' ? lbl + 1 : lbl );
+
+		// same hotkey-marker strip the stock buttons do
+		if( lbl[0] == '&' )
+			lbl++;
+
+		szName = lbl;
 	}
 
 	bool KeyUp( int key ) override;
@@ -163,12 +186,12 @@ protected:
 	{
 		if( !b ) return false;
 
-		m_resFrameW = b->Num( "wide", defW );
-		m_resFrameH = b->Num( "tall", defH );
+		m_resFrameW = b->Int( "wide", defW );
+		m_resFrameH = b->Int( "tall", defH );
 		pos.x = b->PosX( "xpos", defX, RES_SURFACE_W );
 		pos.y = b->PosY( "ypos", defY, RES_SURFACE_H ) + uiStatic.yOffset;
-		size.w = m_resFrameW;
-		size.h = m_resFrameH;
+		size.w = CMenuResBlock::ScaleX( m_resFrameW ); // x stretches with the screen, like the controls inside
+		size.h = CMenuResBlock::ScaleY( m_resFrameH );
 		return true;
 	}
 

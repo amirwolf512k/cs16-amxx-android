@@ -275,7 +275,7 @@ void CClientJoinClass::VidInit()
 		{
 			int lx, ly, lw, lh;
 			lbl->RectSelf( m_resFrameW, m_resFrameH, lx, ly, lw, lh, RES_CLIENT_INSET );
-			text.SetRect( lx, ly, m_resFrameW - lx - RES_CLIENT_INSET * 2, lh + 8 );
+			text.SetRect( lx, ly, CMenuResBlock::ScaleX( m_resFrameW - RES_CLIENT_INSET ) - lx, lh + 8 );
 		}
 	}
 

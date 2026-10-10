@@ -76,15 +76,26 @@ static int ResPos( const char *v, int def, int span, float scale )
 	if( !v || !v[0] )
 		return (int)( def * scale );
 
-	int off = (int)( atoi( v + 1 ) * scale );
+	// a plain number is the whole value; only a leading c/r/b letter
+	// anchors it to the center/right/bottom of the span
+	int base = 0;
+	const char *num = v;
 
 	if( v[0] == 'c' || v[0] == 'C' )
-		off += (int)( span / 2.0f * scale );
+	{
+		base = (int)( span / 2.0f * scale );
+		num = v + 1;
+	}
 	else if( v[0] == 'r' || v[0] == 'R' || v[0] == 'b' || v[0] == 'B' )
-		off += (int)( span * scale );
+	{
+		base = (int)( span * scale );
+		num = v + 1;
+	}
+
+	int off = base + (int)( atoi( num ) * scale );
 
 	return off < 0 ? 0 : off;
-}
+	}
 
 int CMenuResBlock::PosX( const char *key, int def, int span ) const
 {
@@ -480,7 +491,10 @@ bool CMenuResDialog::Load( const char *const *paths, int count )
 						// every string was duplicated out of the file, the
 						// file buffer itself is not kept
 						if( root )
+						{
 							m_root = root;
+							m_loadedPath = paths[i];
+						}
 					}
 				}
 
@@ -504,6 +518,8 @@ bool CMenuResDialog::Load( const char *const *paths, int count )
 				EngFuncs::COM_FreeFile( m_text );
 				m_text = NULL;
 			}
+
+			m_loadedPath = NULL;
 		}
 
 		const CMenuResBlock *CMenuResDialog::FindControl( const char *fieldName ) const

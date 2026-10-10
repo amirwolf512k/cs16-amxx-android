@@ -619,6 +619,10 @@ public class XashActivity extends SDLActivity {
 
                         Button ok = new Button( this );
                         String okLabel = okCtl != null ? token( okCtl.str( "labelText" )) : null;
+                        // the resource label is "&OK" - the ampersand is
+                        // vgui's hotkey marker, the pc button shows "OK"
+                        if( okLabel != null && okLabel.startsWith( "&" ))
+                                okLabel = okLabel.substring( 1 );
                         ok.setText(( okLabel != null && !okLabel.isEmpty() && !okLabel.startsWith( "#" ))
                                 ? okLabel : "OK" );
                         ok.setAllCaps( false );

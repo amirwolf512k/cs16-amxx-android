@@ -57,7 +57,6 @@ public:
 		{
 			CClientWindow::Init();
 
-			CMenuAction *cancelBtn;
 			if( eAmmoClass == BUY_EQUIPMENT )
 			{
 				cancelBtn = AddButton( '0', L("Cstrike_Cancel"), Point( 100, 580 ), CEventCallback( MenuCb( &CClientBaseBuyMenu::cancelPressedCb ), nullptr ) );
@@ -68,8 +67,9 @@ public:
 			}
 			cancelBtn->onGotFocus = MenuCb( &CClientBaseBuyMenu::cancelFocusCb );
 
-			previewBackground.SetSize( 400, 200 );
-			previewBackground.SetCoord( 400, 180 );
+		previewBackground.SetSize( 400, 200 );
+		previewBackground.SetCoord( 400, 180 );
+		m_previewStock = Point( 400, 180 );
 			previewBackground.SetRenderMode( QM_DRAWNORMAL );
 			previewBackground.colorBase = PackRGBA( 0, 0, 0, 160 );
 			previewBackground.Hide();
@@ -78,6 +78,7 @@ public:
 
 		bitmap.SetSize( 400, 200 );
 		bitmap.SetCoord( 400, 180 );
+		m_bitmapStock = Point( 400, 180 );
 		bitmap.bDrawStroke = true;
 		bitmap.bKeepAspectRatio = true;
 		bitmap.SetRenderMode( QM_DRAWTRANS );
@@ -260,6 +261,81 @@ public:
 		}
 	}
 
+	void VidInit() override
+	{
+		BaseClass::VidInit();
+
+		if( !m_numResPaths )
+			return;
+
+		// every submenu reads its own resource/UI/Buy*.res the way
+		// the pc wizard panel does: frame, title, the weapon buttons
+		// through their buy commands, cancel, and the ItemInfo panel
+		// anchoring the weapon preview
+		CMenuResDialog res;
+
+		if( !LoadResLayout( res, m_resPaths, m_numResPaths ))
+			return;
+
+		if( !ResApplyFileFrame( res, 0, 0, 552, 448 ))
+			return;
+
+		ResApplyTitle( res, "Title" );
+
+		for( int i = 0; i < numWeapons; i++ )
+			ResPlaceByCommand( res, weapons[i].command, m_weaponBtns[i] );
+
+		ResPlaceByCommand( res, "vguicancel", cancelBtn );
+
+		const CMenuResBlock *info = res.FindControl( "ItemInfo" );
+
+		if( info )
+		{
+			int ix, iy, iw, ih;
+			info->RectSelf( m_resFrameW, m_resFrameH, ix, iy, iw, ih, RES_CLIENT_INSET );
+
+			// the stock info block is authored at (400,180) on the
+			// surface and the ItemInfo panel wraps the same spot, so
+			// move the whole block onto the panel corner and keep its
+			// internal arrangement; stock spots saved once, the shift
+			// itself recomputed on every VidInit
+			if( !m_stockSaved )
+			{
+				CMenuAction *stock[] =
+				{
+					&priceLabel, &priceLabel_, &originLabel, &originLabel_,
+					&calibreLabel, &calibreLabel_, &clipLabel, &clipLabel_,
+					&rofLabel, &rofLabel_, &weightLabel, &weightLabel_,
+					&projectLabel, &projectLabel_, &muzzlevelLabel, &muzzlevelLabel_,
+					&muzzleenLabel, &muzzleenLabel_,
+				};
+
+				for( int i = 0; i < (int)( sizeof( stock ) / sizeof( stock[0] )); i++ )
+					m_stockPos[i] = stock[i]->pos;
+
+				m_stockSaved = true;
+			}
+
+			int dx = ix - CMenuResBlock::ScaleX( 400 );
+			int dy = iy - CMenuResBlock::ScaleY( 180 );
+
+			CMenuAction *labels[] =
+			{
+				&priceLabel, &priceLabel_, &originLabel, &originLabel_,
+				&calibreLabel, &calibreLabel_, &clipLabel, &clipLabel_,
+				&rofLabel, &rofLabel_, &weightLabel, &weightLabel_,
+				&projectLabel, &projectLabel_, &muzzlevelLabel, &muzzlevelLabel_,
+				&muzzleenLabel, &muzzleenLabel_,
+			};
+
+			for( int i = 0; i < (int)( sizeof( labels ) / sizeof( labels[0] )); i++ )
+				labels[i]->pos = Point( m_stockPos[i].x + dx, m_stockPos[i].y + dy );
+
+			previewBackground.pos = Point( m_previewStock.x + dx, m_previewStock.y + dy );
+			bitmap.pos = Point( m_bitmapStock.x + dx, m_bitmapStock.y + dy );
+		}
+	}
+
 	void cancelPressedCb( void *pExtra )
 	{
 		UI_CloseClientMenu();
@@ -307,6 +383,7 @@ public:
 
 		CMenuAction *btn = AddButton( key, L( labelKey.String() ), pt, pressCb );
 		btn->onPressed.pExtra = &weapons[numWeapons];
+		m_weaponBtns[numWeapons] = btn;
 
 		btn->onGotFocus = MenuCb( &CClientBaseBuyMenu::weaponFocusCb );
 		btn->onGotFocus.pExtra = &weapons[numWeapons];
@@ -328,6 +405,9 @@ public:
 
 	CMenuAction *cancelBtn = nullptr;
 	CMenuAction *m_weaponBtns[10] = {};
+	Point m_stockPos[18];
+	Point m_previewStock, m_bitmapStock;
+	bool m_stockSaved = false;
 	// the resource/UI/Buy*.res files this window reads, in order
 	const char *m_resPaths[2] = {};
 	int m_numResPaths = 0;
