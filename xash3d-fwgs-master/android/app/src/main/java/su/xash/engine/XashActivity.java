@@ -884,10 +884,12 @@ public class XashActivity extends SDLActivity {
         // CS 1.6 style loading window
         //
         // the engine raises it through the loading plaque (connect,
-        // changelevel) and drives the status line and the segmented
-        // progress bar from the resource downloader. The footer shows the
-        // server's banner image when its connect page carries one. Cancel
-        // asks the engine to disconnect.
+        // changelevel) and drives both segmented bars from the resource
+        // downloader: the main bar for the whole pipeline and, only
+        // while a transfer runs, the download block below it (file
+        // name, its own fill, counters) with Cancel beside it. The
+        // footer shows the server's banner image when its connect page
+        // carries one. Cancel asks the engine to disconnect.
         // ------------------------------------------------------------------
 
         // matched to the classic GoldSrc VGUI2 "Loading..." window:
@@ -908,15 +910,13 @@ public class XashActivity extends SDLActivity {
         private ImageView mLoadingBanner;
         private String mLoadingServer = "";
 
-        // stats block of the loading window, filled from the goldsrc
-        // serverdata packet once the engine has parsed it
-        private TextView mLoadingStatServer;
-        private TextView mLoadingStatMap;
-        private TextView mLoadingStatPlayers;
-        private String mStatServer = "";
-        private String mStatMap = "";
-        private String mStatMax = "";
-        private int mStatCur = -1;
+        // the download block of the classic dialog: the file the server
+        // is sending, its own bar and the counter lines around it,
+        // visible only while a transfer actually runs
+        private TextView mLoadingDlName;
+        private TextView mLoadingDlStatus;
+        private LoadingBar mLoadingDlBar;
+        private TextView mLoadingDlFooter;
 
         /** The segmented yellow progress bar of the classic loading
          *  window: small blocks filling left to right. percent < 0
@@ -968,7 +968,6 @@ public class XashActivity extends SDLActivity {
 
         public void loadingShow( final String serverAddr ) {
                 seedDefaultAvatars();
-                queryServerInfo( serverAddr );
 
                 runOnUiThread( new Runnable() {
                         @Override public void run() {
@@ -1005,173 +1004,59 @@ public class XashActivity extends SDLActivity {
                 });
         }
 
-        /** server / map / slots for the stats block, the rows the PC
-         *  loading dialog carried. The engine calls it as soon as the
-         *  serverdata packet is parsed; until then we show the dial
-         *  address. */
-        public void loadingStats( final String server, final String map, final int maxPlayers ) {
+        /** the second bar of the classic loading dialog: the engine
+         *  calls it while a transfer runs with the file name, that
+         *  file's fill (0..100) and the counter lines around it. a
+         *  null file folds the whole block away. */
+        public void loadingDownload( final String file, final float percent,
+                final String status, final String footer ) {
                 runOnUiThread( new Runnable() {
                         @Override public void run() {
+                                if( mLoadingOverlay == null ) return;
                                 try {
-                                        if( server != null && server.length() > 0 ) mStatServer = server;
-                                        if( map != null && map.length() > 0 ) mStatMap = map;
-                                        if( maxPlayers > 0 ) mStatMax = String.valueOf( maxPlayers );
+                                        if( file == null || file.length() == 0 ) {
+                                                if( mLoadingDlName != null )
+                                                        mLoadingDlName.setVisibility( View.GONE );
+                                                if( mLoadingDlStatus != null )
+                                                        mLoadingDlStatus.setVisibility( View.GONE );
+                                                if( mLoadingDlBar != null )
+                                                        mLoadingDlBar.setVisibility( View.GONE );
+                                                if( mLoadingDlFooter != null )
+                                                        mLoadingDlFooter.setVisibility( View.GONE );
+                                                return;
+                                        }
 
-                                        if( mLoadingOverlay == null ) return;
+                                        if( mLoadingDlName == null ) return;
 
-                                        if( mLoadingStatServer != null && mStatServer.length() > 0 )
-                                                mLoadingStatServer.setText( "Server: " + mStatServer );
-                                        if( mLoadingStatMap != null && mStatMap.length() > 0 )
-                                                mLoadingStatMap.setText( "Map: " + mStatMap );
-                                        if( mLoadingStatPlayers != null && mStatMax.length() > 0 )
-                                                mLoadingStatPlayers.setText( "Players: " +
-                                                        ( mStatCur >= 0 ? mStatCur : "?" ) + "/" + mStatMax );
+                                        mLoadingDlName.setVisibility( View.VISIBLE );
+                                        if( !file.contentEquals( mLoadingDlName.getText() ))
+                                                mLoadingDlName.setText( file );
+
+                                        if( mLoadingDlStatus != null ) {
+                                                if( status != null && status.length() > 0 ) {
+                                                        mLoadingDlStatus.setVisibility( View.VISIBLE );
+                                                        if( !status.contentEquals( mLoadingDlStatus.getText() ))
+                                                                mLoadingDlStatus.setText( status );
+                                                } else mLoadingDlStatus.setVisibility( View.GONE );
+                                        }
+
+                                        if( mLoadingDlBar != null ) {
+                                                mLoadingDlBar.setVisibility( View.VISIBLE );
+                                                mLoadingDlBar.setPercent( percent );
+                                        }
+
+                                        if( mLoadingDlFooter != null ) {
+                                                if( footer != null && footer.length() > 0 ) {
+                                                        mLoadingDlFooter.setVisibility( View.VISIBLE );
+                                                        if( !footer.contentEquals( mLoadingDlFooter.getText() ))
+                                                                mLoadingDlFooter.setText( footer );
+                                                } else mLoadingDlFooter.setVisibility( View.GONE );
+                                        }
                                 } catch( Throwable t ) {
-                                        Log.w( TAG, "loadingStats failed", t );
+                                        Log.w( TAG, "loadingDownload failed", t );
                                 }
                         }
                 });
-        }
-
-        /** live player count from the direct A2S_INFO query; the
-         *  goldsrc serverdata carries the hostname and the slot count
-         *  but never how many seats are taken right now */
-        public void loadingPlayerCount( final int players, final int max ) {
-                runOnUiThread( new Runnable() {
-                        @Override public void run() {
-                                try {
-                                        if( players >= 0 && max > 0 ) {
-                                                mStatCur = players;
-                                                mStatMax = String.valueOf( max );
-                                        }
-
-                                        if( mLoadingOverlay == null ) return;
-
-                                        if( mLoadingStatPlayers != null && mStatMax.length() > 0 )
-                                                mLoadingStatPlayers.setText( "Players: " +
-                                                        ( mStatCur >= 0 ? mStatCur : "?" ) + "/" + mStatMax );
-                                } catch( Throwable t ) {
-                                        Log.w( TAG, "loadingPlayerCount failed", t );
-                                }
-                        }
-                });
-        }
-
-        /** A2S_INFO against the connect address: one tiny udp query,
-         *  challenge round included, so the stats panel can show the
-         *  real player count instead of an anonymous question mark */
-        private void queryServerInfo( String addr ) {
-                try {
-                        String a = addr == null ? "" : addr.trim();
-                        if( a.startsWith( "steam://" )) a = a.substring( 8 );
-                        if( a.length() == 0 || a.equalsIgnoreCase( "localhost" )) return;
-
-                        int colon = a.lastIndexOf( ':' );
-                        final String host = colon > 0 ? a.substring( 0, colon ) : a;
-                        final int port = colon > 0 ?
-                                Integer.parseInt( a.substring( colon + 1 )) : 27015;
-                        if( host.length() == 0 || port <= 0 || port > 65535 ) return;
-
-                        Thread t = new Thread( new Runnable() {
-                                @Override public void run() {
-                                        try {
-                                                java.net.DatagramSocket s = new java.net.DatagramSocket();
-                                                s.setSoTimeout( 1500 );
-                                                java.net.InetAddress ip = java.net.InetAddress.getByName( host );
-
-                                                byte[] head = { ( byte )0xFF, ( byte )0xFF, ( byte )0xFF, ( byte )0xFF, 'T' };
-                                                byte[] tail = "Source Engine Query".getBytes( "ISO-8859-1" );
-                                                byte[] query = new byte[head.length + tail.length + 1];
-                                                System.arraycopy( head, 0, query, 0, head.length );
-                                                System.arraycopy( tail, 0, query, head.length, tail.length );
-                                                query[query.length - 1] = 0;
-
-                                                byte[] reply = a2sRound( s, ip, port, query );
-                                                if( reply != null && reply.length > 9 && reply[4] == 'A' ) {
-                                                        // challenge first, resend with the
-                                                        // four bytes appended
-                                                        byte[] ch = new byte[query.length + 4];
-                                                        System.arraycopy( query, 0, ch, 0, query.length );
-                                                        System.arraycopy( reply, 5, ch, query.length, 4 );
-                                                        reply = a2sRound( s, ip, port, ch );
-                                                }
-                                                s.close();
-
-                                                if( reply == null || reply.length < 10 ||
-                                                        ( reply[4] != 'm' && reply[4] != 'I' )) return;
-
-                                                int off = 5 + ( reply[4] == 'I' ? 1 : 0 );
-                                                String name = a2sString( reply, off );
-                                                if( name == null ) return;
-                                                off += name.length() + 1;
-                                                String map = a2sString( reply, off );
-                                                if( map == null ) return;
-                                                off += map.length() + 1;
-                                                String skip = a2sString( reply, off ); // folder
-                                                if( skip == null ) return;
-                                                off += skip.length() + 1;
-                                                skip = a2sString( reply, off ); // game
-                                                if( skip == null ) return;
-                                                off += skip.length() + 1;
-                                                if( reply[4] == 'I' ) off += 2; // source appid
-                                                if( off + 2 > reply.length ) return;
-
-                                                final int players = reply[off] & 0xFF;
-                                                final int max = reply[off + 1] & 0xFF;
-                                                final String fname = name, fmap = map;
-                                                runOnUiThread( new Runnable() {
-                                                        @Override public void run() {
-                                                                try {
-                                                                        loadingStats( fname, fmap, max > 0 ? max : 1 );
-                                                                        loadingPlayerCount( players, max );
-                                                                } catch( Throwable ignored ) {}
-                                                        }
-                                                });
-                                        } catch( Throwable t ) {
-                                                // no answer is fine, the row keeps the
-                                                // slot count the engine reported
-                                        }
-                                }
-                        });
-                        t.setDaemon( true );
-                        t.start();
-                } catch( Throwable t ) {
-                        // unparsable address, skip the query
-                }
-        }
-
-        private static byte[] a2sRound( java.net.DatagramSocket s, java.net.InetAddress ip,
-                int port, byte[] query ) throws Exception {
-                s.send( new java.net.DatagramPacket( query, query.length, ip, port ));
-                byte[] buf = new byte[2048];
-                java.net.DatagramPacket p = new java.net.DatagramPacket( buf, buf.length );
-                s.receive( p );
-                byte[] out = new byte[p.getLength()];
-                System.arraycopy( buf, 0, out, 0, out.length );
-                return out;
-        }
-
-        private static String a2sString( byte[] b, int off ) {
-                if( off < 0 || off >= b.length ) return null;
-                int e = off;
-                while( e < b.length && b[e] != 0 ) e++;
-                if( e >= b.length ) return null;
-                try {
-                        return new String( b, off, e - off, "UTF-8" );
-                } catch( Throwable t ) {
-                        return null;
-                }
-        }
-
-        /** one stats row in the loading window, PC dialog style */
-        private TextView addStatRow( LinearLayout parent, String text ) {
-                TextView row = new TextView( this );
-                row.setText( text );
-                row.setTextColor( LOADING_TEXT );
-                row.setTextSize( TypedValue.COMPLEX_UNIT_SP, 12 );
-                parent.addView( row, new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
-                return row;
         }
 
         /** Resolve a game-relative path against the running gamedir. */
@@ -1588,47 +1473,14 @@ public class XashActivity extends SDLActivity {
 
                 mLoadingServer = serverAddr != null ? serverAddr : "";
 
-                // fresh window, fresh stats: the engine refills these
-                // from the new serverdata a moment later
-                mStatServer = "";
-                mStatMap = "";
-                mStatMax = "";
-                mStatCur = -1;
-
                 FrameLayout overlay = new FrameLayout( this );
                 overlay.setBackgroundColor( LOADING_SHADE );
 
-                // ---- small stats block top left, tap the dark area to
-                // fold it away ----
-                LinearLayout panel = new LinearLayout( this );
-                panel.setOrientation( LinearLayout.VERTICAL );
-                panel.setBackground( makeLoadingPanelBackground() );
-                int pad = dp( 10 );
-                panel.setPadding( pad, pad, pad, pad );
-
-                FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT );
-                panelLp.gravity = Gravity.TOP | Gravity.START;
-                panelLp.setMargins( dp( 14 ), dp( 14 ), 0, 0 );
-                overlay.addView( panel, panelLp );
-
-                LinearLayout stats = new LinearLayout( this );
-                stats.setOrientation( LinearLayout.VERTICAL );
-
-                mLoadingStatServer = addStatRow( stats, "Server: " +
-                        ( mStatServer.length() > 0 ? mStatServer : mLoadingServer ));
-                mLoadingStatMap = addStatRow( stats, "Map: " +
-                        ( mStatMap.length() > 0 ? mStatMap : "-" ));
-                mLoadingStatPlayers = addStatRow( stats, "Players: " +
-                        ( mStatMax.length() > 0 ? mStatMax : "-" ));
-
-                panel.addView( stats, new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
-
                 // ---- the classic centered dialog: olive box carrying
-                // the "Loading..." title, the status line, the segmented
-                // bar, the server picture and Cancel, all inside one
-                // frame like the GoldSrc VGUI window ----
+                // the "Loading..." title, the status line, the main
+                // segmented bar, the download block (second bar with
+                // Cancel beside it) and the server picture, all inside
+                // one frame like the GoldSrc VGUI window ----
                 LinearLayout dialog = new LinearLayout( this );
                 dialog.setOrientation( LinearLayout.VERTICAL );
                 dialog.setBackground( makeLoadingPanelBackground() );
@@ -1704,9 +1556,84 @@ public class XashActivity extends SDLActivity {
                 mLoadingBar = bar;
                 mLoadingPct = pct;
 
+                // ---- the download block: the file being transferred,
+                // its status and the second yellow bar with the Cancel
+                // button beside it, then the byte counter line - the
+                // rows the pc dialog showed during a download. the
+                // whole block stays hidden until the engine reports
+                // the first active transfer ----
+                TextView dlName = new TextView( this );
+                dlName.setTextColor( LOADING_TITLE );
+                dlName.setTextSize( TypedValue.COMPLEX_UNIT_SP, 13 );
+                dlName.setSingleLine( false );
+                dlName.setVisibility( View.GONE );
+                LinearLayout.LayoutParams dlNameLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                dlNameLp.topMargin = dp( 8 );
+                dialog.addView( dlName, dlNameLp );
+                mLoadingDlName = dlName;
+
+                TextView dlStatus = new TextView( this );
+                dlStatus.setTextColor( LOADING_TEXT );
+                dlStatus.setTextSize( TypedValue.COMPLEX_UNIT_SP, 12 );
+                dlStatus.setSingleLine( false );
+                dlStatus.setVisibility( View.GONE );
+                LinearLayout.LayoutParams dlStatusLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                dlStatusLp.topMargin = dp( 2 );
+                dialog.addView( dlStatus, dlStatusLp );
+                mLoadingDlStatus = dlStatus;
+
+                LinearLayout dlRow = new LinearLayout( this );
+                dlRow.setGravity( Gravity.CENTER_VERTICAL );
+
+                LoadingBar dlBar = new LoadingBar( this );
+                dlBar.setVisibility( View.GONE );
+                dlRow.addView( dlBar, new LinearLayout.LayoutParams(
+                        0, dp( 16 ), 1f ));
+                mLoadingDlBar = dlBar;
+
+                // Cancel sits beside the download bar on the same row,
+                // never below the dialog box
+                Button cancel = new Button( this );
+                cancel.setText( "Cancel" );
+                cancel.setAllCaps( false );
+                cancel.setTextColor( LOADING_TITLE );
+                cancel.setTextSize( TypedValue.COMPLEX_UNIT_SP, 13 );
+                cancel.setBackground( makeLoadingButtonBackground() );
+                cancel.setStateListAnimator( null );
+                cancel.setElevation( 0f );
+                cancel.setMinHeight( 0 );
+                cancel.setPadding( dp( 10 ), 0, dp( 10 ), 0 );
+                cancel.setOnClickListener( new View.OnClickListener() {
+                        @Override public void onClick( View v ) {
+                                hideLoadingOverlay();
+                                nativeLoadingCancelled();
+                        }
+                });
+                LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, dp( 26 ));
+                cancelLp.leftMargin = dp( 8 );
+                dlRow.addView( cancel, cancelLp );
+
+                LinearLayout.LayoutParams dlRowLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                dlRowLp.topMargin = dp( 8 );
+                dialog.addView( dlRow, dlRowLp );
+
+                TextView dlFooter = new TextView( this );
+                dlFooter.setTextColor( LOADING_TEXT );
+                dlFooter.setTextSize( TypedValue.COMPLEX_UNIT_SP, 11 );
+                dlFooter.setVisibility( View.GONE );
+                LinearLayout.LayoutParams dlFooterLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                dlFooterLp.topMargin = dp( 4 );
+                dialog.addView( dlFooter, dlFooterLp );
+                mLoadingDlFooter = dlFooter;
+
                 // server banner slot: the classic loading-banner plugins
                 // drop resource/LoadingDialog.res next to the game files;
-                // if it is on disk we show its picture under the bar,
+                // if it is on disk we show its picture under the bars,
                 // exactly where the pc client put it. stays hidden until
                 // a picture actually loads.
                 ImageView banner = new ImageView( this );
@@ -1724,45 +1651,6 @@ public class XashActivity extends SDLActivity {
                 mLoadingOverlay = overlay;
                 loadLoadingBanner( overlay, banner );
 
-                LinearLayout cancelRow = new LinearLayout( this );
-                cancelRow.setGravity( Gravity.END );
-
-                Button cancel = new Button( this );
-                cancel.setText( "Cancel" );
-                cancel.setAllCaps( false );
-                cancel.setTextColor( LOADING_TITLE );
-                cancel.setTextSize( TypedValue.COMPLEX_UNIT_SP, 14 );
-                cancel.setBackground( makeLoadingButtonBackground() );
-                cancel.setStateListAnimator( null );
-                cancel.setElevation( 0f );
-                cancel.setMinHeight( 0 );
-                cancel.setPadding( dp( 12 ), 0, dp( 12 ), 0 );
-                cancel.setOnClickListener( new View.OnClickListener() {
-                        @Override public void onClick( View v ) {
-                                hideLoadingOverlay();
-                                nativeLoadingCancelled();
-                        }
-                });
-                cancelRow.addView( cancel, new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, dp( 30 )));
-
-                LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
-                cancelLp.topMargin = dp( 10 );
-                dialog.addView( cancelRow, cancelLp );
-
-                mLoadingOverlay = overlay;
-
-                // tap the dark area to fold the stats block away, the
-                // game underneath stays covered until the map is ready
-                overlay.setOnClickListener( new View.OnClickListener() {
-                        @Override public void onClick( View v ) {
-                                boolean show = panel.getVisibility() != View.VISIBLE;
-                                panel.setVisibility( show ? View.VISIBLE : View.GONE );
-                        }
-                });
-                panel.setClickable( true );
-
                 addContentView( overlay, new ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT ));
         }
@@ -1775,6 +1663,10 @@ public class XashActivity extends SDLActivity {
                 mLoadingBar = null;
                 mLoadingStatus = null;
                 mLoadingPct = null;
+                mLoadingDlName = null;
+                mLoadingDlStatus = null;
+                mLoadingDlBar = null;
+                mLoadingDlFooter = null;
                 mLoadingBanner = null;
 
                 try {

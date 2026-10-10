@@ -107,7 +107,7 @@ qboolean Android_IsMOTDDialogOpen( void ); // true while the MOTD dialog is on s
 void Android_MOTDDialogClosed( void ); // called from Java when the dialog is dismissed
 void Android_LoadingShow( const char *serveraddr ); // CS 1.6 style loading window
 void Android_LoadingStatus( const char *text, float percent ); // percent < 0 means busy
-void Android_LoadingStats( const char *server, const char *map, int maxplayers ); // fill the stats panel
+void Android_LoadingDownload( const char *file, float percent, const char *status, const char *footer ); // second bar, file == NULL hides the block
 void Android_LoadingHide( void );
 qboolean Android_LoadingCancelled( void ); // true once after the window Cancel was pressed
 void Android_AvatarFetch( uint64_t steamid64 ); // pull a steam avatar for the scoreboard

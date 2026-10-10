@@ -776,7 +776,7 @@ CL_ParseServerData
 static void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
 {
 	char	gamefolder[MAX_QPATH];
-	char	hostname[MAX_QPATH]; // real server name for the loading window
+	char	hostname[MAX_QPATH]; // real server name, console log only
 	string	mapfile;
 	qboolean	background;
 	int	i, required_version;
@@ -886,10 +886,9 @@ static void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
 	}
 
 #if XASH_ANDROID
-	// fill the CS 1.6 style loading window stats panel and move the
-	// status line on to the resource phase
-	Android_LoadingStats( hostname, clgame.mapname, cl.maxclients );
-	Android_LoadingStatus( "Verifying map and resources...", -1.0f );
+	// move the status line on to the resource phase; the server
+	// and map names stay out of the window like the pc dialog
+	Android_LoadingStatus( "Verifying and downloading resources...", -1.0f );
 #endif
 	Q_snprintf( mapfile, sizeof( mapfile ), "maps/%s.bsp", clgame.mapname );
 	if( CRC32_MapFile( &cl.worldmapCRC, mapfile, cl.maxclients > 1 ))

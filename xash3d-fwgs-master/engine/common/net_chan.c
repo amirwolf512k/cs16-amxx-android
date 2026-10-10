@@ -1499,9 +1499,15 @@ void Netchan_UpdateProgress( netchan_t *chan )
 			lastpercent = scr_download.value;
 
 			if( lastcount > 0 && !COM_StringEmpty( host.downloadfile ))
+			{
 				CL_LoadingDownloadProgress( host.downloadfile, lastpercent / 100.0f );
+				CL_LoadingDownloadFile( host.downloadfile, lastpercent / 100.0f, NULL, NULL );
+			}
 			else if( lastcount == 0 && lastpercent >= 0.0f )
+			{
 				CL_LoadingDownloadProgress( NULL, lastpercent / 100.0f );
+				CL_LoadingDownloadFile( NULL, 0.0f, NULL, NULL );
+			}
 		}
 	}
 #endif // XASH_ANDROID

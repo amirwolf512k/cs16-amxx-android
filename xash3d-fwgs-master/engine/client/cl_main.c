@@ -1453,6 +1453,7 @@ static char cl_loading_lasttext[MAX_SYSPATH];
 static float cl_loading_lastpct = -1.0f;
 static double cl_loading_lastdl;
 static double cl_loading_lastpush;
+static qboolean cl_loading_dlshown; // the download block below the main bar
 
 void CL_LoadingReset( void )
 {
@@ -1462,6 +1463,7 @@ void CL_LoadingReset( void )
 	cl_loading_lastpct = -1.0f;
 	cl_loading_lastdl = 0.0;
 	cl_loading_lastpush = 0.0;
+	CL_LoadingDownloadHide();
 }
 
 void CL_LoadingResourceList( int total )
@@ -1491,6 +1493,9 @@ static void CL_LoadingPrecache( const char *name, int done, int total )
 {
 	char text[MAX_SYSPATH];
 
+	// the transfer phase is over, fold the download block away
+	CL_LoadingDownloadHide();
+
 	if( total <= 0 || COM_StringEmpty( name ))
 		return;
 
@@ -1500,7 +1505,6 @@ static void CL_LoadingPrecache( const char *name, int done, int total )
 
 void CL_LoadingFileDone( const char *name )
 {
-	char text[MAX_SYSPATH];
 
 	if( cl_loading_filetotal <= 0 || cl_loading_filedone >= cl_loading_filetotal )
 		return;
@@ -1512,36 +1516,93 @@ void CL_LoadingFileDone( const char *name )
 	if( host.realtime - cl_loading_lastdl < 1.0 )
 		return;
 
-	Q_snprintf( text, sizeof( text ), "Checking %s", name );
-	CL_LoadingPush( text, 5.0f + 60.0f * ( float )cl_loading_filedone / ( float )cl_loading_filetotal );
+	// fixed phase text like the pc dialog; the checked file is
+	// not interesting enough to flash the status line for
+	CL_LoadingPush( "Verifying and downloading resources...",
+		5.0f + 60.0f * ( float )cl_loading_filedone / ( float )cl_loading_filetotal );
 }
 
 void CL_LoadingDownloadProgress( const char *file, float filefrac )
 {
-	char text[MAX_SYSPATH];
-	float percent;
-	int left;
+	float base, percent;
 
 	cl_loading_lastdl = host.realtime;
 
 	if( cl_loading_filetotal <= 0 )
-	{
+		return;
+
+	// the status line keeps the fixed phase text, exactly like the
+	// pc LoadingDialog; the moving file name, its percent and the
+	// counters live in the download block (second bar) below
+	base = ( float )cl_loading_filedone;
+	if( file && !COM_StringEmptyOrNULL( file ))
+		base += bound( 0.0f, filefrac, 1.0f );
+
+	percent = 5.0f + 60.0f * bound( 0.0f, base / ( float )cl_loading_filetotal, 1.0f );
+	CL_LoadingPush( "Verifying and downloading resources...", percent );
+
+}
+
+/*
+========================
+CL_LoadingDownloadFile
+
+the second bar of the classic loading window: shown only while a
+transfer is actually running, with the file name above it, its own
+yellow fill and the info lines the pc dialog had (time left, byte
+counter, remaining files). file == NULL folds the block away.
+========================
+*/
+void CL_LoadingDownloadFile( const char *file, float frac,
+	const char *status, const char *footer )
+{
 #if XASH_ANDROID
-		Android_LoadingStatus( "Downloading resources...", -1.0f );
-#endif
+	static char lastname[MAX_SYSPATH];
+	static float lastfrac = -1.0f;
+	static double lastpush;
+
+	if( !file || COM_StringEmptyOrNULL( file ))
+	{
+		CL_LoadingDownloadHide();
 		return;
 	}
 
-	left = cl_loading_filetotal - cl_loading_filedone;
-	percent = 5.0f + 60.0f * bound( 0.0f, (( float )cl_loading_filedone + filefrac ) /
-		( float )cl_loading_filetotal, 1.0f );
+	// the transfer feed runs every frame: cross the jni bridge
+	// only when the block would visibly change
+	if( cl_loading_dlshown &&
+		!Q_strcmp( file, lastname ) &&
+		fabs( frac - lastfrac ) < 0.01f &&
+		host.realtime - lastpush < 0.25 )
+		return;
 
-	if( file && !COM_StringEmpty( file ))
-		Q_snprintf( text, sizeof( text ), "Downloading %s (%d file%s left)", file,
-			left, left == 1 ? "" : "s" );
-	else Q_snprintf( text, sizeof( text ), "Finishing downloads..." );
+	Q_strncpy( lastname, file, sizeof( lastname ));
+	lastfrac = frac;
+	lastpush = host.realtime;
+	cl_loading_dlshown = true;
 
-	CL_LoadingPush( text, percent );
+	Android_LoadingDownload( file, bound( 0.0f, frac, 1.0f ) * 100.0f,
+		COM_StringEmptyOrNULL( status ) ? NULL : status,
+		COM_StringEmptyOrNULL( footer ) ? NULL : footer );
+#endif
+}
+
+/*
+========================
+CL_LoadingDownloadHide
+
+fold the download block away (transfer finished or the load moved
+on to precache). safe to call any number of times.
+========================
+*/
+void CL_LoadingDownloadHide( void )
+{
+#if XASH_ANDROID
+	if( cl_loading_dlshown )
+	{
+		cl_loading_dlshown = false;
+		Android_LoadingDownload( NULL, 0.0f, NULL, NULL );
+	}
+#endif
 }
 
 /*

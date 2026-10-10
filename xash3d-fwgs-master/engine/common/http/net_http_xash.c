@@ -1283,14 +1283,20 @@ void HTTP_Run( void )
 		Cvar_SetValue( "scr_download", http.progress/http.progress_count * 100 );
 
 #if XASH_ANDROID
-	// http transfers never ride the netchan file stream, so without
-	// this the loading window bar sat at zero the whole join on
-	// servers that push their files through fastdl
+	// http transfers never ride the netchan file stream. feed both
+	// loading window elements from here: the overall bar through
+	// CL_LoadingDownloadProgress and the download block (second
+	// yellow bar, file name, time and byte counters) directly
 	if( activefile && http.progress_count != 0 )
 	{
 		static char lastname[MAX_SYSPATH];
 		static float lastpercent = -2.0f;
+		static int64_t lastbytes;
+		static double lasttime;
+		static float kbps;
 		float percent = http.progress / http.progress_count * 100.0f;
+		int64_t dl_done = 0, dl_total = 0;
+		int dl_left = 0;
 		const char *p;
 		qboolean printable = true;
 
@@ -1304,14 +1310,87 @@ void HTTP_Run( void )
 			}
 		}
 
-		if( printable && ( percent - lastpercent >= 0.5f || percent < lastpercent ||
-			Q_strcmp( activefile, lastname )))
+		if( printable )
 		{
-			CL_LoadingDownloadProgress( activefile, percent / 100.0f );
-			Q_strncpy( lastname, activefile, sizeof( lastname ));
-			lastpercent = percent;
+			// byte totals over the queued transfers: finished
+			// files carry their full size so the fraction only
+			// moves when a new unknown-size file starts
+			for( httpfile_t *sum = http.first_file; sum; sum = sum->next )
+			{
+				if( sum->size <= 0 )
+				{
+					if( !sum->success )
+						dl_left++; // queued, size unknown yet
+					continue;
+				}
+
+				dl_total += sum->size;
+				dl_done += bound( 0, sum->downloaded, sum->size );
+
+				if( sum->downloaded < sum->size )
+					dl_left++;
+			}
+
+			// rolling speed estimate for the seconds left
+			if( lasttime > 0.0 )
+			{
+				double dt = host.realtime - lasttime;
+
+				if( dt >= 0.5 )
+				{
+					int64_t delta = dl_done - lastbytes;
+
+					if( delta >= 0 )
+					{
+						float inst = ( float )( delta / dt );
+
+						kbps = kbps > 0.0f ? kbps * 0.7f + inst * 0.3f : inst;
+					}
+
+					lastbytes = dl_done;
+					lasttime = host.realtime;
+				}
+			}
+			else
+			{
+				lastbytes = dl_done;
+				lasttime = host.realtime;
+			}
+
+			if( percent - lastpercent >= 0.5f || percent < lastpercent ||
+				Q_strcmp( activefile, lastname ))
+			{
+				CL_LoadingDownloadProgress( activefile, percent / 100.0f );
+				Q_strncpy( lastname, activefile, sizeof( lastname ));
+				lastpercent = percent;
+			}
+
+			if( dl_total > 0 )
+			{
+				char status[MAX_SYSPATH], footer[MAX_SYSPATH];
+				float frac = ( float )dl_done / ( float )dl_total * 100.0f;
+
+				if( kbps > 512.0f )
+				{
+					int seconds = ( int )(( dl_total - dl_done ) / kbps );
+
+					Q_snprintf( status, sizeof( status ), "%d seconds remaining",
+						seconds > 0 ? seconds : 1 );
+				}
+				else Q_strncpy( status, "downloading...", sizeof( status ));
+
+				if( kbps > 0.0f )
+					Q_snprintf( footer, sizeof( footer ), "%.1f/%.1f MB [%.0f kb/s] | Remaining files: %d",
+						dl_done / 1048576.0f, dl_total / 1048576.0f, kbps / 1024.0f, dl_left );
+				else Q_snprintf( footer, sizeof( footer ), "%.1f/%.1f MB | Remaining files: %d",
+					dl_done / 1048576.0f, dl_total / 1048576.0f, dl_left );
+
+				CL_LoadingDownloadFile( activefile, frac, status, footer );
+			}
+			else CL_LoadingDownloadFile( activefile, percent / 100.0f, NULL, NULL );
 		}
 	}
+	else CL_LoadingDownloadFile( NULL, 0.0f, NULL, NULL );
 #endif // XASH_ANDROID
 
 	HTTP_AutoClean();

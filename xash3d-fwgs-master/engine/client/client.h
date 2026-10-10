@@ -797,6 +797,8 @@ void CL_LoadingReset( void );
 void CL_LoadingResourceList( int total );
 void CL_LoadingFileDone( const char *name );
 void CL_LoadingDownloadProgress( const char *file, float filefrac );
+void CL_LoadingDownloadFile( const char *file, float frac, const char *status, const char *footer );
+void CL_LoadingDownloadHide( void );
 void CL_SetupOverviewParams( void );
 void CL_UpdateFrameLerp( void );
 int CL_IsDevOverviewMode( void );

@@ -36,8 +36,8 @@ struct jnimethods_s
         jmethodID saveAndroidID;
         jmethodID showMOTD; // sandboxed HTML MOTD dialog
         jmethodID loadingShow; // CS 1.6 style loading window
-        jmethodID loadingStatus;
-        jmethodID loadingStats; // server / map / slots for the stats panel
+        jmethodID loadingStatus; // phase text + overall bar fill
+        jmethodID loadingDownload; // second bar: current file, its fill and counters
         jmethodID loadingHide;
         jmethodID avatarFetch; // steam avatar for the scoreboard
 } jni;
@@ -106,34 +106,44 @@ void Android_LoadingStatus( const char *text, float percent )
 
 /*
 ========================
-Android_LoadingStats
+Android_LoadingDownload
 
-fill the stats panel: real server hostname (goldsrc serverdata
-carries it right after the gamedir), current map, slot count.
+the second bar of the loading window: the file the server is
+sending right now, its own fill and the info lines around it.
+file == NULL folds the block away, status/footer == NULL hides
+those lines individually.
 ========================
 */
-void Android_LoadingStats( const char *server, const char *map, int maxplayers )
+void Android_LoadingDownload( const char *file, float percent, const char *status, const char *footer )
 {
-        jstring jserver, jmap;
+        jstring jfile = NULL, jstatus = NULL, jfooter = NULL;
 
-        if( !jni.env || !jni.activity || !jni.loadingStats )
+        if( !jni.env || !jni.activity || !jni.loadingDownload )
                 return;
 
-        jserver = (*jni.env)->NewStringUTF( jni.env, COM_StringEmpty( server ) ? "" : server );
-        if( !jserver )
-                return;
-
-        jmap = (*jni.env)->NewStringUTF( jni.env, COM_StringEmpty( map ) ? "" : map );
-
-        if( !jmap )
+        if( !COM_StringEmptyOrNULL( file ))
         {
-                (*jni.env)->DeleteLocalRef( jni.env, jserver );
-                return;
+                jfile = (*jni.env)->NewStringUTF( jni.env, file );
+
+                if( !jfile )
+                        return;
         }
 
-        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.loadingStats, jserver, jmap, maxplayers );
-        (*jni.env)->DeleteLocalRef( jni.env, jserver );
-        (*jni.env)->DeleteLocalRef( jni.env, jmap );
+        if( jfile && !COM_StringEmptyOrNULL( status ))
+                jstatus = (*jni.env)->NewStringUTF( jni.env, status );
+
+        if( jfile && !COM_StringEmptyOrNULL( footer ))
+                jfooter = (*jni.env)->NewStringUTF( jni.env, footer );
+
+        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.loadingDownload,
+                jfile, percent, jstatus, jfooter );
+
+        if( jfile )
+                (*jni.env)->DeleteLocalRef( jni.env, jfile );
+        if( jstatus )
+                (*jni.env)->DeleteLocalRef( jni.env, jstatus );
+        if( jfooter )
+                (*jni.env)->DeleteLocalRef( jni.env, jfooter );
 
         if( (*jni.env)->ExceptionCheck( jni.env ))
                 (*jni.env)->ExceptionClear( jni.env );
@@ -200,7 +210,7 @@ void Android_Init( void )
         jni.showMOTD = (*jni.env)->GetMethodID( jni.env, jni.actcls, "showMOTD", "([B[B)Z" );
         jni.loadingShow = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingShow", "(Ljava/lang/String;)V" );
         jni.loadingStatus = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingStatus", "(Ljava/lang/String;F)V" );
-        jni.loadingStats = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingStats", "(Ljava/lang/String;Ljava/lang/String;I)V" );
+        jni.loadingDownload = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingDownload", "(Ljava/lang/String;FLjava/lang/String;Ljava/lang/String;)V" );
         jni.loadingHide = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingHide", "()V" );
         jni.avatarFetch = (*jni.env)->GetMethodID( jni.env, jni.actcls, "avatarFetch", "(J)V" );
         // a failed lookup leaves a pending exception; clear it so
