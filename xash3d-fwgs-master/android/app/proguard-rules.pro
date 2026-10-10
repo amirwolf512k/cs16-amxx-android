@@ -41,6 +41,10 @@
     void loadingDownload(java.lang.String, float, java.lang.String, java.lang.String);
     void loadingHide();
     void avatarFetch(long);
+    # the customize image picker is JNI-driven too; the same rule
+    # that kept showMOTD alive: without it R8 strips avatarPick on
+    # release builds and the "Choose image..." button does nothing
+    void avatarPick();
     void nativeMOTDClosed();
 }
 
