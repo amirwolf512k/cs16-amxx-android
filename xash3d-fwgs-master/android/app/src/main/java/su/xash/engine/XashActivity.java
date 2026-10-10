@@ -433,27 +433,84 @@ public class XashActivity extends SDLActivity {
                         int screenW = dm.widthPixels;
                         int screenH = dm.heightPixels;
 
-                        // 1:1 to the retail Steam CS 1.6 MOTD window
-                        // (pixel-measured from the retail window):
-                        // ~71.5% of the screen width x ~90% of the height,
-                        // black at ~76% opacity (the game faintly shows
-                        // through), Valve LineBorder (178,119,0) around it.
-                        int panelW = Math.max( dp( 200 ), Math.round( screenW * 0.715f ));
-                        int panelH = Math.max( dp( 140 ), Math.round( screenH * 0.90f ));
+                        // the retail client builds this window from
+                        // resource/UI/MOTD.res (valve fallback:
+                        // TextWindow.res): ClientMOTD frame, serverName
+                        // label, Message panel, ok button - all laid out
+                        // from the file the same way the pc gameui does
+                        ResBlock motdRes = null;
+                        String[] motdPaths = { "resource/UI/MOTD.res", "resource/UI/TextWindow.res" };
+
+                        for( String mp : motdPaths ) {
+                                File mf = resGameFile( mp );
+
+                                if( mf == null ) continue;
+
+                                String mtext = readTextFile( mf, 128 * 1024 );
+
+                                if( mtext == null ) continue;
+
+                                motdRes = resParse( mtext );
+
+                                if( motdRes != null ) break;
+                        }
+
+                        LinkedHashMap<String,ResBlock> mctl = new LinkedHashMap<String,ResBlock>();
+                        collectControls( motdRes, 0, mctl );
+                        ResBlock frameCtl = mctl.get( "clientmotd" );
+                        ResBlock nameCtl = mctl.get( "servername" );
+                        ResBlock msgCtl = mctl.get( "message" );
+                        ResBlock okCtl = mctl.get( "ok" );
+
+                        // the vgui surface the dialogs are authored on
+                        float resSX = screenW / 640f;
+                        float resSY = screenH / 480f;
+
+                        // 1:1 to the retail Steam CS 1.6 MOTD window when
+                        // no resource ships (pixel-measured from the
+                        // retail window): ~71.5% of the screen width x
+                        // ~90% of the height, black at ~76% opacity (the
+                        // game faintly shows through), Valve LineBorder
+                        // (178,119,0) around it.
+                        int panelW = frameCtl != null
+                                ? Math.max( dp( 200 ), Math.round( resInt( frameCtl.str( "wide" ), 552 ) * resSX ))
+                                : Math.max( dp( 200 ), Math.round( screenW * 0.715f ));
+                        int panelH = frameCtl != null
+                                ? Math.max( dp( 140 ), Math.round( resInt( frameCtl.str( "tall" ), 448 ) * resSY ))
+                                : Math.max( dp( 140 ), Math.round( screenH * 0.90f ));
+                        int panelX = frameCtl != null
+                                ? resPos( frameCtl.str( "xpos" ), 44, screenW, resSX )
+                                : ( screenW - panelW ) / 2;
+                        int panelY = frameCtl != null
+                                ? resPos( frameCtl.str( "ypos" ), 0, screenH, resSY )
+                                : ( screenH - panelH ) / 2;
+
+                        // the scheme colors every pc dialog texts itself
+                        // with (cstrike amber, valve pale gray-green)
+                        loadLoadingTokens();
+                        loadLoadingScheme();
+                        int motdText = schemeColor( "ControlText", MOTD_VGUI_TEXT );
+                        int motdBorder = schemeSetting( "FgColor", MOTD_VGUI_BORDER );
 
                         LinearLayout panel = new LinearLayout( this );
                         panel.setOrientation( LinearLayout.VERTICAL );
-                        panel.setBackground( makeMOTDWindowBackground());
+                        panel.setBackground( makeMOTDWindowBackground( motdBorder ));
                         FrameLayout.LayoutParams panelLp = new FrameLayout.LayoutParams( panelW, panelH );
-                        panelLp.gravity = Gravity.CENTER;
+                        panelLp.gravity = Gravity.TOP | Gravity.START;
+                        panelLp.leftMargin = panelX;
+                        panelLp.topMargin = panelY;
                         root.addView( panel, panelLp );
 
                         // title row like the reference — the CS soldier
-                        // logo left, amber "Title Font" caption, sitting
-                        // directly on the window background (no bar strip;
-                        // the game shows through it), with a thin light
-                        // separator line along its bottom edge.
-                        int titleH = Math.round( panelH * 0.125f );
+                        // logo left, "Title Font" caption (scheme
+                        // ControlText color), sitting directly on the
+                        // window background (no bar strip; the game shows
+                        // through it), with a thin light separator line
+                        // along its bottom edge. The band height is the
+                        // serverName label of the resource.
+                        int titleH = nameCtl != null
+                                ? Math.max( dp( 28 ), Math.round( resInt( nameCtl.str( "tall" ), 48 ) * resSY ))
+                                : Math.round( panelH * 0.125f );
                         LinearLayout titleBar = new LinearLayout( this );
                         titleBar.setOrientation( LinearLayout.HORIZONTAL );
                         titleBar.setGravity( Gravity.CENTER_VERTICAL );
@@ -469,7 +526,7 @@ public class XashActivity extends SDLActivity {
 
                         TextView titleView = new TextView( this );
                         titleView.setText(( title != null && !title.isEmpty()) ? title : "Counter-Strike" );
-                        titleView.setTextColor( MOTD_VGUI_TEXT );
+                        titleView.setTextColor( motdText );
                         titleView.setTextSize( TypedValue.COMPLEX_UNIT_PX, Math.round( titleH * 0.42f ));
                         titleView.setTypeface( Typeface.DEFAULT_BOLD );
                         titleView.setSingleLine( true );
@@ -530,24 +587,44 @@ public class XashActivity extends SDLActivity {
 
                         LinearLayout.LayoutParams contentLp = new LinearLayout.LayoutParams(
                                         ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f );
-                        contentLp.setMargins( Math.round( panelW * 0.023f ), Math.round( panelH * 0.085f ),
-                                        Math.round( panelW * 0.023f ), 0 );
+
+                        if( msgCtl != null ) {
+                                // the Message panel rect of the resource,
+                                // panel-relative margins
+                                int msgX = resPos( msgCtl.str( "xpos" ), 0, screenW, resSX );
+                                int msgY = resPos( msgCtl.str( "ypos" ), 116, screenH, resSY );
+                                int msgW = Math.max( dp( 60 ), Math.round( resInt( msgCtl.str( "wide" ), 480 ) * resSX ));
+                                int left = Math.max( 0, msgX - panelX );
+                                int top = Math.max( 0, msgY - panelY - titleH - dp( 1 ));
+                                int right = Math.max( 0, ( panelX + panelW ) - ( msgX + msgW ));
+                                contentLp.setMargins( left, top, right, 0 );
+                        } else {
+                                contentLp.setMargins( Math.round( panelW * 0.023f ), Math.round( panelH * 0.085f ),
+                                                Math.round( panelW * 0.023f ), 0 );
+                        }
                         panel.addView( contentWrap, contentLp );
 
-                        // --- the reference OK button — small, bottom-left:
-                        // ~20.5% of the window wide, ~4.6% tall, near-black
-                        // body with a thin LIGHT-GRAY frame (the VGUI
-                        // CommandButton look) and an AMBER label; the empty
+                        // --- the reference OK button — small, bottom-left
+                        // like the resource's ok control (128x20 at the
+                        // bottom of the stock file), near-black body with
+                        // a thin LIGHT-GRAY frame (the VGUI CommandButton
+                        // look) and the scheme text color; the empty
                         // window band below it matches the reference too.
-                        int okW = Math.max( dp( 64 ), Math.round( panelW * 0.205f ));
-                        int okH = Math.max( dp( 22 ), Math.round( panelH * 0.046f ));
+                        int okW = okCtl != null
+                                ? Math.max( dp( 48 ), Math.round( resInt( okCtl.str( "wide" ), 128 ) * resSX ))
+                                : Math.max( dp( 64 ), Math.round( panelW * 0.205f ));
+                        int okH = okCtl != null
+                                ? Math.max( dp( 18 ), Math.round( resInt( okCtl.str( "tall" ), 20 ) * resSY ))
+                                : Math.max( dp( 22 ), Math.round( panelH * 0.046f ));
 
                         Button ok = new Button( this );
-                        ok.setText( "OK" );
+                        String okLabel = okCtl != null ? token( okCtl.str( "labelText" )) : null;
+                        ok.setText(( okLabel != null && !okLabel.isEmpty() && !okLabel.startsWith( "#" ))
+                                ? okLabel : "OK" );
                         ok.setAllCaps( false );
-                        ok.setTextColor( MOTD_VGUI_TEXT );
+                        ok.setTextColor( motdText );
                         ok.setTextSize( TypedValue.COMPLEX_UNIT_PX, Math.round( okH * 0.5f ));
-                        ok.setBackground( makeMOTDButtonBackground());
+                        ok.setBackground( makeMOTDButtonBackground( motdText ));
                         ok.setStateListAnimator( null );
                         ok.setElevation( 0f );
                         ok.setPadding( dp( 6 ), 0, dp( 6 ), 0 );
@@ -559,8 +636,21 @@ public class XashActivity extends SDLActivity {
                         } );
 
                         LinearLayout.LayoutParams okLp = new LinearLayout.LayoutParams( okW, okH );
-                        okLp.setMargins( Math.round( panelW * 0.112f ), Math.round( panelH * 0.02f ),
-                                        0, Math.round( panelH * 0.16f ));
+
+                        if( okCtl != null ) {
+                                // the resource places the ok control from
+                                // the bottom of the frame; the content
+                                // weight above absorbs the rest, so only
+                                // the bottom band matters here
+                                int okYRel = Math.max( 0, resPos( okCtl.str( "ypos" ), 364, screenH, resSY ) - panelY );
+                                int okHRes = Math.round( resInt( okCtl.str( "tall" ), 20 ) * resSY );
+                                okLp.setMargins( Math.max( dp( 4 ), Math.max( 0, resPos( okCtl.str( "xpos" ), 0, screenW, resSX ) - panelX )),
+                                        0, 0,
+                                        Math.max( 0, panelH - okYRel - okHRes ));
+                        } else {
+                                okLp.setMargins( Math.round( panelW * 0.112f ), Math.round( panelH * 0.02f ),
+                                                0, Math.round( panelH * 0.16f ));
+                        }
                         panel.addView( ok, okLp );
 
                         dialog.setContentView( root );
@@ -687,24 +777,26 @@ public class XashActivity extends SDLActivity {
 
         /** The reference window — black at ~76% opacity (the game
          *  faintly shows through, like the PC retail MOTD over the map)
-         *  with Valve's 1px LineBorder (178,119,0). */
-        private Drawable makeMOTDWindowBackground() {
+         *  with the scheme FgColor line border (Valve's 1px LineBorder
+         *  178,119,0 amber on cstrike). */
+        private Drawable makeMOTDWindowBackground( int borderColor ) {
                 GradientDrawable d = new GradientDrawable();
                 d.setColor( 0xC2000000 );
-                d.setStroke( Math.max( 1, dp( 1 )), MOTD_VGUI_BORDER );
+                d.setStroke( Math.max( 1, dp( 1 )), borderColor );
                 return d;
         }
 
         /** The small command button — near-black body, thin light-gray
-         *  frame (the VGUI CommandButton look), amber when pressed. */
-        private StateListDrawable makeMOTDButtonBackground() {
+         *  frame (the VGUI CommandButton look), scheme accent when
+         *  pressed. */
+        private StateListDrawable makeMOTDButtonBackground( int accent ) {
                 GradientDrawable normal = new GradientDrawable();
                 normal.setColor( 0xE6000000 );
                 normal.setStroke( Math.max( 1, dp( 1 )), 0xFFC8C4BC );
 
                 GradientDrawable pressed = new GradientDrawable();
                 pressed.setColor( 0xFF3A2E10 );
-                pressed.setStroke( Math.max( 1, dp( 1 )), MOTD_VGUI_TEXT );
+                pressed.setStroke( Math.max( 1, dp( 1 )), accent );
 
                 StateListDrawable sld = new StateListDrawable();
                 sld.addState( new int[] { android.R.attr.state_pressed }, pressed );

@@ -36,6 +36,12 @@ version.
 #include "vgui_parser.h"
 #include "triangleapi.h"
 #include "draw_util.h"
+#include "hud_res.h"
+
+// the spectator bars/labels come from resource/UI/Spectator.res like
+// the retail client's spectator GUI (TopBar, BottomBar, the score and
+// timer labels); the touch button grid stays where the port puts it
+static hud_res_t *specRes = NULL;
 
 /*
  * We will draw all elements inside a box. It's size 16x10.
@@ -104,6 +110,19 @@ int CHudSpectatorGui::VidInit()
 	m_hArrowUp     = gRenderAPI.GL_LoadTexture("gfx/vgui/1920_arrowup.tga", NULL, 0, TF_NEAREST | TF_NOMIPMAP | TF_CLAMP );
 	m_hArrowLeft   = gRenderAPI.GL_LoadTexture("gfx/vgui/1920_arrowleft.tga", NULL, 0, TF_NEAREST | TF_NOMIPMAP | TF_CLAMP );
 	m_hArrowRight  = gRenderAPI.GL_LoadTexture("gfx/vgui/1920_arrowright.tga", NULL, 0, TF_NEAREST | TF_NOMIPMAP | TF_CLAMP );
+
+	// resource/UI/Spectator.res, mod dir with the valve/ fallback
+	HUD_ResFree( specRes );
+	specRes = NULL;
+
+	static const char *paths[] =
+	{
+		"resource/UI/Spectator.res",
+		"resource/UI/SpectatorGUI.res",
+	};
+
+	specRes = HUD_ResLoad( paths, 2 );
+
 	return 1;
 }
 
@@ -115,6 +134,8 @@ void CHudSpectatorGui::Shutdown()
 	gRenderAPI.GL_FreeTexture( m_hArrowUp );
 	gRenderAPI.GL_FreeTexture( m_hArrowLeft );
 	gRenderAPI.GL_FreeTexture( m_hArrowRight );
+	HUD_ResFree( specRes );
+	specRes = NULL;
 }
 
 inline void DrawButtonWithText( int x1, int y1, int wide, int tall, const char *sz, int r, int g, int b, bool highlight = false )
@@ -179,6 +200,65 @@ int CHudSpectatorGui::Draw( float flTime )
 
 	int r = 255, g = 140, b = 0;
 
+	// bar heights from the resource (66px bars on the 640x480 surface
+	// in the stock file), the classic 16x10 grid without it
+	float resSX = ScreenWidth / 640.0f;
+	float resSY = ScreenHeight / 480.0f;
+	int barH = INT_YPOS(2), botH = INT_YPOS(2);
+	const hud_res_block_t *resBar;
+
+	if( specRes && ( resBar = HUD_ResFind( specRes, "TopBar" )))
+		barH = (int)( HUD_ResInt( specRes, resBar, "tall", 133 ) * resSY );
+
+	if( specRes && ( resBar = HUD_ResFind( specRes, "BottomBar" )))
+		botH = (int)( HUD_ResInt( specRes, resBar, "tall", 133 ) * resSY );
+
+	// the status line anchors, resource-driven when the file ships
+	int mapX = INT_XPOS(12.5) + 10, mapY = INT_YPOS(2) * 0.25;
+	int timerX = INT_XPOS(12.5) + 10, timerY = INT_YPOS(2) * 0.5;
+	int timerTX = (int)(INT_XPOS(12.5) + gHUD.GetCharHeight() * 1.5f + gHUD.GetCharWidth('M'));
+	int timerTY = INT_YPOS(2) * 0.5;
+	int ctLY = INT_YPOS(2) * 0.25, terLY = INT_YPOS(2) * 0.5;
+	int valEnd = INT_XPOS(12.5) - 10;
+	int scoreEnd = INT_XPOS(12.5) - 50;
+	int divX = INT_XPOS(12.5);
+
+	if( specRes )
+	{
+		if(( resBar = HUD_ResFind( specRes, "extrainfo" )))
+		{
+			mapX = HUD_ResPosX( specRes, resBar, "xpos", 0, ScreenWidth, resSX );
+			mapY = HUD_ResPosX( specRes, resBar, "ypos", 0, ScreenHeight, resSY );
+		}
+
+		if(( resBar = HUD_ResFind( specRes, "timerimage" )))
+		{
+			timerX = HUD_ResPosX( specRes, resBar, "xpos", 0, ScreenWidth, resSX );
+			timerY = HUD_ResPosX( specRes, resBar, "ypos", 0, ScreenHeight, resSY );
+		}
+
+		if(( resBar = HUD_ResFind( specRes, "timerlabel" )))
+		{
+			timerTX = HUD_ResPosX( specRes, resBar, "xpos", 0, ScreenWidth, resSX );
+			timerTY = HUD_ResPosX( specRes, resBar, "ypos", 0, ScreenHeight, resSY );
+		}
+
+		if(( resBar = HUD_ResFind( specRes, "DividerBar" )))
+			divX = HUD_ResPosX( specRes, resBar, "xpos", 0, ScreenWidth, resSX );
+
+		if(( resBar = HUD_ResFind( specRes, "CTScoreValue" )))
+			valEnd = HUD_ResPosX( specRes, resBar, "xpos", 0, ScreenWidth, resSX )
+				+ (int)( HUD_ResInt( specRes, resBar, "wide", 10 ) * resSX );
+
+		if(( resBar = HUD_ResFind( specRes, "CTScoreLabel" )))
+			ctLY = HUD_ResPosX( specRes, resBar, "ypos", 0, ScreenHeight, resSY );
+
+		if(( resBar = HUD_ResFind( specRes, "TERScoreLabel" )))
+			terLY = HUD_ResPosX( specRes, resBar, "ypos", 0, ScreenHeight, resSY );
+
+		scoreEnd = valEnd - (int)( 40 * resSX );
+	}
+
 	// at first, draw these silly black bars
 	int startpos = 0;
 	if( gHUD.m_Spectator.m_pip->value != INSET_OFF ) // pip adjust
@@ -186,16 +266,15 @@ int CHudSpectatorGui::Draw( float flTime )
 		startpos = XRES(gHUD.m_Spectator.m_OverviewData.insetWindowWidth) + XRES(gHUD.m_Spectator.m_OverviewData.insetWindowX);
 		startpos *= ScreenWidth / TrueWidth; // hud_scale adjust
 	}
-	FillRGBABlend(startpos, 0, ScreenWidth - startpos, INT_YPOS(2), 0, 0, 0, 153);
-	FillRGBABlend(0, ScreenHeight - INT_YPOS(2), ScreenWidth, INT_YPOS(2), 0, 0, 0, 153);
+	FillRGBABlend(startpos, 0, ScreenWidth - startpos, barH, 0, 0, 0, 153);
+	FillRGBABlend(0, ScreenHeight - botH, ScreenWidth, botH, 0, 0, 0, 153);
 
 	if ( gHUD.m_Spectator.m_drawstatus && gHUD.m_Spectator.m_drawstatus->value )
 	{
 		// divider
 		{
-			int divX = INT_XPOS(12.5);
-			int divTop = INT_YPOS(2) * 0.25;
-			int divBottom = INT_YPOS(2) * 0.5 + gHUD.GetCharHeight();
+			int divTop = barH * 0.25f;
+			int divBottom = barH * 0.5f + gHUD.GetCharHeight();
 			int divH = divBottom - divTop;
 			if (divH < gHUD.GetCharHeight()) divH = gHUD.GetCharHeight();
 
@@ -211,7 +290,7 @@ int CHudSpectatorGui::Draw( float flTime )
 		}
 
 		{ // mapname. extradata
-			DrawUtils::DrawHudString( INT_XPOS(12.5) + 10, INT_YPOS(2) * 0.25, ScreenWidth, label.m_szMap, r, g, b );
+			DrawUtils::DrawHudString( mapX, mapY, ScreenWidth, label.m_szMap, r, g, b );
 
 			if( !m_bBombPlanted ) // timer remaining
 			{
@@ -222,8 +301,8 @@ int CHudSpectatorGui::Draw( float flTime )
 					gEngfuncs.pTriAPI->RenderMode( kRenderTransAlpha );
 					gEngfuncs.pTriAPI->Color4f( 1.0f, 1.0f, 1.0f, 1.0f );
 
-					float quadX = INT_XPOS(12.5) + 10;
-					float quadY = INT_YPOS(2) * 0.5f;
+					float quadX = timerX;
+					float quadY = timerY;
 					int uploadW = (int)gRenderAPI.RenderGetParm( PARM_TEX_WIDTH, m_hTimerTexture );
 					int uploadH = (int)gRenderAPI.RenderGetParm( PARM_TEX_HEIGHT, m_hTimerTexture );
 
@@ -234,7 +313,7 @@ int CHudSpectatorGui::Draw( float flTime )
 										(quadY + (float)uploadH) * gHUD.m_flScale );
 					// gEngfuncs.pTriAPI->End();
 				}
-				DrawUtils::DrawHudString( INT_XPOS(12.5) + gHUD.GetCharHeight() * 1.5 + gHUD.GetCharWidth('M') , INT_YPOS(2) * 0.5, ScreenWidth,
+				DrawUtils::DrawHudString( timerTX, timerTY, ScreenWidth,
 										label.m_szTimer, r, g, b );
 			}
 		}
@@ -243,11 +322,11 @@ int CHudSpectatorGui::Draw( float flTime )
 		{ // draw team here
 			int iLen = DrawUtils::HudStringLen("Counter-Terrorists:" );
 
-			DrawUtils::DrawHudString( INT_XPOS(12.5) - iLen - 50 , INT_YPOS(2) * 0.25, INT_XPOS(12.5) - 50, "Counter-Terrorists:", r, g, b );
-			DrawUtils::DrawHudString( INT_XPOS(12.5) - iLen - 50, INT_YPOS(2) * 0.5, INT_XPOS(12.5) - 50, "Terrorists:", r, g, b );
+			DrawUtils::DrawHudString( scoreEnd - iLen , ctLY, scoreEnd, "Counter-Terrorists:", r, g, b );
+			DrawUtils::DrawHudString( scoreEnd - iLen, terLY, scoreEnd, "Terrorists:", r, g, b );
 			// count
-			DrawUtils::DrawHudNumberString( INT_XPOS(12.5) - 10, INT_YPOS(2) * 0.25, INT_XPOS(12.5) - 50, label.m_iCounterTerrorists, r, g, b );
-			DrawUtils::DrawHudNumberString( INT_XPOS(12.5) - 10, INT_YPOS(2) * 0.5,  INT_XPOS(12.5) - 50, label.m_iTerrorists,        r, g, b );
+			DrawUtils::DrawHudNumberString( valEnd, ctLY, scoreEnd, label.m_iCounterTerrorists, r, g, b );
+			DrawUtils::DrawHudNumberString( valEnd, terLY, scoreEnd, label.m_iTerrorists,        r, g, b );
 		}
 	}
 
@@ -355,7 +434,16 @@ int CHudSpectatorGui::Draw( float flTime )
 	//{
 		int iLen = DrawUtils::HudStringLen( label.m_szNameAndHealth );
 		GetTeamColor( r, g, b, g_PlayerExtraInfo[ g_iUser2 ].teamnumber );
-		DrawUtils::DrawHudString( ScreenWidth * 0.5 - iLen * 0.5, INT_YPOS(9) - gHUD.GetCharHeight() * 0.5 , ScreenWidth,
+
+		// the watched player line sits in the playerlabel rect of
+		// the resource (bottom center, above the bottom bar)
+		int nameY = INT_YPOS(9) - gHUD.GetCharHeight() * 0.5;
+
+		if( specRes && ( resBar = HUD_ResFind( specRes, "playerlabel" )))
+			nameY = HUD_ResPosX( specRes, resBar, "ypos", 0, ScreenHeight, resSY )
+				- gHUD.GetCharHeight() * 0.5;
+
+		DrawUtils::DrawHudString( ScreenWidth * 0.5 - iLen * 0.5, nameY , ScreenWidth,
 								  label.m_szNameAndHealth, r, g, b );
 	//}
 

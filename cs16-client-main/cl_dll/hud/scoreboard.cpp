@@ -27,6 +27,7 @@
 #include "com_weapons.h"
 #include "cdll_dll.h"
 #include "draw_util.h"
+#include "hud_res.h"
 #include "vgui_parser.h"
 #include "eventscripts.h"
 
@@ -90,7 +91,16 @@ static struct Column
 
 
 // Y positions
-#define ROW_GAP  15
+// the row pitch; resource/UI/ScoreBoard.res "linespacing" overrides it
+static int ROW_GAP = 15;
+
+// the scoreboard window of the retail client is built from
+// resource/UI/ScoreBoard.res (ClientScoreBoard frame + ServerName label
+// + PlayerList with its linespacing); when the game ships it, the box
+// sits where the resource says instead of the hardcoded thirds
+static hud_res_t *sbRes = NULL;
+static const hud_res_block_t *sbFrame = NULL;
+static const hud_res_block_t *sbList = NULL;
 
 // tab avatars -----------------------------------------------------------------
 // the engine saves every player's steam avatar into media/avatars/ (keyed by
@@ -342,6 +352,45 @@ int CHudScoreboard :: Init( void )
 
 int CHudScoreboard :: VidInit( void )
 {
+	// the retail client reads the scoreboard dialog from
+	// resource/UI/ScoreBoard.res; the engine filesystem already falls
+	// back from the mod dir to valve/, so every mod gets the valve
+	// stock file unless it ships its own
+	HUD_ResFree( sbRes );
+	sbRes = NULL;
+	sbFrame = sbList = NULL;
+
+	static const char *paths[] =
+	{
+		"resource/UI/ScoreBoard.res",
+		"resource/UI/Scoreboard.res",
+	};
+
+	sbRes = HUD_ResLoad( paths, 2 );
+
+	if( sbRes )
+	{
+		sbFrame = HUD_ResFind( sbRes, "ClientScoreBoard" );
+		sbList = HUD_ResFind( sbRes, "PlayerList" );
+	}
+
+	if( sbList )
+	{
+		int spacing = HUD_ResInt( sbRes, sbList, "linespacing", 15 );
+
+		if( spacing < 8 )
+			spacing = 8;
+
+		if( spacing > 32 )
+			spacing = 32;
+
+		ROW_GAP = spacing;
+	}
+	else
+	{
+		ROW_GAP = 15;
+	}
+
 	xstart = ScreenWidth * 0.125f;
 	xend = ScreenWidth - xstart;
 	ystart = 100;
@@ -401,10 +450,25 @@ int CHudScoreboard :: Draw( float flTime )
 
 	if( !m_bForceDraw )
 	{
-		xstart     = 0.125f * ScreenWidth;
-		xend       = ScreenWidth - xstart;
-		ystart     = 90;
-		yend       = ScreenHeight - ystart;
+		if( sbRes && sbFrame )
+		{
+			// the .res dialog box: authored on a 640x480 vgui
+			// surface, stretched like the retail client stretches it
+			float sx = ScreenWidth / 640.0f;
+			float sy = ScreenHeight / 480.0f;
+
+			xstart = HUD_ResPosX( sbRes, sbFrame, "xpos", 0, ScreenWidth, sx );
+			ystart = HUD_ResPosX( sbRes, sbFrame, "ypos", 0, ScreenHeight, sy );
+			xend = xstart + (int)( HUD_ResInt( sbRes, sbFrame, "wide", 520 ) * sx );
+			yend = ystart + (int)( HUD_ResInt( sbRes, sbFrame, "tall", 340 ) * sy );
+		}
+		else
+		{
+			xstart     = 0.125f * ScreenWidth;
+			xend       = ScreenWidth - xstart;
+			ystart     = 90;
+			yend       = ScreenHeight - ystart;
+		}
 		m_colors.r = 0;
 		m_colors.g = 0;
 		m_colors.b = 0;

@@ -326,6 +326,12 @@ public:
 	CMenuAction muzzlevelLabel, muzzlevelLabel_;
 	CMenuAction muzzleenLabel, muzzleenLabel_;
 
+	CMenuAction *cancelBtn = nullptr;
+	CMenuAction *m_weaponBtns[10] = {};
+	// the resource/UI/Buy*.res files this window reads, in order
+	const char *m_resPaths[2] = {};
+	int m_numResPaths = 0;
+
 	BuyMenuWeaponInfo weapons[10];
 	int numWeapons = 0;
 
@@ -459,6 +465,7 @@ public:
 class CClientMainBuyMenu : public CClientWindow {
 public:
 	virtual void _Init() override;
+	virtual void VidInit() override;
 
 	void SetTeam( int team ) { m_iTeam = team; }
 	int GetTeam() const { return m_iTeam; }
@@ -467,6 +474,9 @@ private:
 	CMenuAction categoriesTitle;
 	CMenuBitmap columnDivider;
 	CMenuCheckBox autoFill;
+	// the buttons in creation order, the .res fieldNames that place
+	// them sit right next to the AddButton calls in _Init
+	CMenuAction *m_mainBtns[12] = {};
 	int m_iTeam = TEAM_TERRORIST;
 };
 class CClientPistolsTMenu         : public CClientBaseBuyMenu { virtual void _Init() override; };
@@ -479,6 +489,17 @@ class CClientRiflesCTMenu         : public CClientBaseBuyMenu { virtual void _In
 class CClientMachineGunsMenu      : public CClientBaseBuyMenu { virtual void _Init() override; };
 class CClientItemTMenu            : public CClientBaseBuyMenu { virtual void _Init() override; };
 class CClientItemCTMenu           : public CClientBaseBuyMenu { virtual void _Init() override; };
+
+// every submenu reads its own resource/UI/Buy*.res; the shared windows
+// (shotguns, machineguns) try the team variants in order, their stock
+// geometry is the same on both sides
+template <typename T>
+void SetResPaths( T *menu, const char *a, const char *b = nullptr )
+{
+	menu->m_resPaths[0] = a;
+	menu->m_resPaths[1] = b;
+	menu->m_numResPaths = b ? 2 : 1;
+}
 
 template <typename T>
 void Menu_Show( void )
@@ -550,29 +571,29 @@ void CClientMainBuyMenu::_Init()
 	AddItem( columnDivider );
 
 	Point pt = Point( 100, buttonsTopY );
-	AddButton( '1', L( "Cstrike_Pistols" ), pt, Menu_Show_Team<CClientPistolsTMenu, CClientPistolsCTMenu> );
+	m_mainBtns[0] = AddButton( '1', L( "Cstrike_Pistols" ), pt, Menu_Show_Team<CClientPistolsTMenu, CClientPistolsCTMenu> );
 	pt.y += 50;
-	AddButton( '2', L( "Cstrike_Shotguns" ), pt, Menu_Show_Team<CClientShotgunsMenu, CClientShotgunsMenu> );
+	m_mainBtns[1] = AddButton( '2', L( "Cstrike_Shotguns" ), pt, Menu_Show_Team<CClientShotgunsMenu, CClientShotgunsMenu> );
 	pt.y += 50;
-	AddButton( '3', L( "Cstrike_SubMachineGuns" ), pt, Menu_Show_Team<CClientSubMachineGunsTMenu, CClientSubMachineGunsCTMenu> );
+	m_mainBtns[2] = AddButton( '3', L( "Cstrike_SubMachineGuns" ), pt, Menu_Show_Team<CClientSubMachineGunsTMenu, CClientSubMachineGunsCTMenu> );
 	pt.y += 50;
-	AddButton( '4', L( "Cstrike_Rifles" ), pt, Menu_Show_Team<CClientRiflesTMenu, CClientRiflesCTMenu> );
+	m_mainBtns[3] = AddButton( '4', L( "Cstrike_Rifles" ), pt, Menu_Show_Team<CClientRiflesTMenu, CClientRiflesCTMenu> );
 	pt.y += 50;
-	AddButton( '5', L( "Cstrike_MachineGuns" ), pt, Menu_Show_Team<CClientMachineGunsMenu, CClientMachineGunsMenu> );
+	m_mainBtns[4] = AddButton( '5', L( "Cstrike_MachineGuns" ), pt, Menu_Show_Team<CClientMachineGunsMenu, CClientMachineGunsMenu> );
 	pt.y += 50;
-	AddButton( '6', L( "Cstrike_Prim_Ammo" ), pt, ExecAndHide( "primammo" ) );
+	m_mainBtns[5] = AddButton( '6', L( "Cstrike_Prim_Ammo" ), pt, ExecAndHide( "primammo" ) );
 	pt.y += 50;
-	AddButton( '7', L( "Cstrike_Sec_Ammo" ), pt, ExecAndHide( "secammo" ));
+	m_mainBtns[6] = AddButton( '7', L( "Cstrike_Sec_Ammo" ), pt, ExecAndHide( "secammo" ));
 	pt.y += 50;
-	AddButton( '8', L( "Cstrike_Equipment" ), pt, Menu_Show_Team<CClientItemTMenu, CClientItemCTMenu> );
+	m_mainBtns[7] = AddButton( '8', L( "Cstrike_Equipment" ), pt, Menu_Show_Team<CClientItemTMenu, CClientItemCTMenu> );
 	pt.y += 50;
-	AddButton( '0', L( "Cstrike_Cancel" ), pt, CEventCallback( []( CMenuBaseItem *, void * ) { UI_CloseClientMenu(); } ) );
+	m_mainBtns[8] = AddButton( '0', L( "Cstrike_Cancel" ), pt, CEventCallback( []( CMenuBaseItem *, void * ) { UI_CloseClientMenu(); } ) );
 
 	pt.x = 400;
 	pt.y = buttonsTopY;
-	AddButton( 'A', L( "Cstrike_BuyMenuAutobuy" ), pt, ExecAndHide( "autobuy" ) );
+	m_mainBtns[9] = AddButton( 'A', L( "Cstrike_BuyMenuAutobuy" ), pt, ExecAndHide( "autobuy" ) );
 	pt.y += 50;
-	AddButton( 'R', L( "Cstrike_BuyMenuRebuy" ), pt, ExecAndHide( "rebuy" ) );
+	m_mainBtns[10] = AddButton( 'R', L( "Cstrike_BuyMenuRebuy" ), pt, ExecAndHide( "rebuy" ) );
 	pt.y += 50;
 
 	autoFill.szName = L( "Auto buy ammo" );
@@ -584,10 +605,50 @@ void CClientMainBuyMenu::_Init()
 
 	AddItem( autoFill );
 }
+
+void CClientMainBuyMenu::VidInit()
+{
+	BaseClass::VidInit();
+
+	// the main category dialog is resource/UI/MainBuyMenu.res; the
+	// stock file has no frame of its own, its controls sit directly
+	// on the vgui surface like the pc wizard panel
+	static const char *paths[] = { "resource/UI/MainBuyMenu.res" };
+	CMenuResDialog res;
+
+	if( !LoadResLayout( res, paths, 1 ))
+		return;
+
+	pos = Point( 0, uiStatic.yOffset );
+	size = Size( CMenuResBlock::ScaleX( RES_SURFACE_W ), CMenuResBlock::ScaleY( RES_SURFACE_H ));
+	m_resFrameW = RES_SURFACE_W;
+	m_resFrameH = RES_SURFACE_H;
+
+	ResApplyTitle( res, "Title" );
+	ResPlaceControl( res, "selectCategory", &categoriesTitle, false );
+	ResPlaceControl( res, "pistols", m_mainBtns[0] );
+	ResPlaceControl( res, "shotguns", m_mainBtns[1] );
+	ResPlaceControl( res, "submachineguns", m_mainBtns[2] );
+	ResPlaceControl( res, "rifles", m_mainBtns[3] );
+	ResPlaceControl( res, "machineguns", m_mainBtns[4] );
+	ResPlaceControl( res, "primaryammo", m_mainBtns[5] );
+	ResPlaceControl( res, "secammo", m_mainBtns[6] );
+	ResPlaceControl( res, "equipment", m_mainBtns[7] );
+	ResPlaceControl( res, "CancelButton", m_mainBtns[8] );
+	ResPlaceControl( res, "AutobuyButton", m_mainBtns[9] );
+	ResPlaceControl( res, "RebuyButton", m_mainBtns[10] );
+
+	// the autofill checkbox is this port's own extra, no .res
+	// counterpart - park it under the rebuy button
+	if( m_mainBtns[10] )
+		autoFill.pos = Point( m_mainBtns[10]->pos.x,
+			m_mainBtns[10]->pos.y + m_mainBtns[10]->size.h + 8 );
+}
 void CClientPistolsTMenu::_Init()
 {
 	szName = L( "Cstrike_PistolsLabel" );
 	eAmmoClass = BUY_SECAMMO;
+	SetResPaths( this, "resource/UI/BuyPistols_TER.res" );
 
 	AddWeapon( BuyMenuWeaponInfo{ "Glock18", "glock18", "glock", "Glock" });
 	AddWeapon( BuyMenuWeaponInfo{ "USP45", "usp45", "usp", "USP45" });
@@ -600,6 +661,7 @@ void CClientPistolsCTMenu::_Init()
 {
 	szName = L( "Cstrike_PistolsLabel" );
 	eAmmoClass = BUY_SECAMMO;
+	SetResPaths( this, "resource/UI/BuyPistols_CT.res" );
 
 	AddWeapon( BuyMenuWeaponInfo{ "Glock18", "glock18", "glock", "Glock" });
 	AddWeapon( BuyMenuWeaponInfo{ "USP45", "usp45", "usp", "USP45" });
@@ -611,6 +673,7 @@ void CClientShotgunsMenu::_Init()
 {
 	szName = L( "Cstrike_ShotgunsLabel" );
 	eAmmoClass = BUY_PRIMAMMO;
+	SetResPaths( this, "resource/UI/BuyShotguns_CT.res", "resource/UI/BuyShotguns_TER.res" );
 
 	AddWeapon( BuyMenuWeaponInfo{ "m3", "m3", "m3", "M3" });
 	AddWeapon( BuyMenuWeaponInfo{ "xm1014", "xm1014", "xm1014",	"XM1014" });
@@ -620,6 +683,7 @@ void CClientSubMachineGunsTMenu::_Init()
 {
 	szName = L( "Cstrike_SubmachinegunsLabel" );
 	eAmmoClass = BUY_PRIMAMMO;
+	SetResPaths( this, "resource/UI/BuySubMachineguns_TER.res" );
 
 	AddWeapon( BuyMenuWeaponInfo{ "MAC10", "mac10", "mac10", "Mac10" });
 	AddWeapon( BuyMenuWeaponInfo{ "MP5", "mp5", "mp5", "MP5" });
@@ -630,6 +694,7 @@ void CClientSubMachineGunsCTMenu::_Init()
 {
 	szName = L( "Cstrike_SubmachinegunsLabel" );
 	eAmmoClass = BUY_PRIMAMMO;
+	SetResPaths( this, "resource/UI/BuySubMachineguns_CT.res" );
 
 	AddWeapon( BuyMenuWeaponInfo{ "Tmp", "tmp", "tmp", "TMP" });
 	AddWeapon( BuyMenuWeaponInfo{ "MP5", "mp5", "mp5", "MP5" });
@@ -640,6 +705,7 @@ void CClientRiflesTMenu::_Init()
 {
 	szName = L( "Cstrike_RiflesLabel" );
 	eAmmoClass = BUY_PRIMAMMO;
+	SetResPaths( this, "resource/UI/BuyRifles_TER.res" );
 
 	AddWeapon( BuyMenuWeaponInfo{ "Galil", "galil", "galil", "Galil" });
 	AddWeapon( BuyMenuWeaponInfo{ "AK47", "ak47", "ak47", "AK47" });
@@ -653,6 +719,7 @@ void CClientRiflesCTMenu::_Init()
 {
 	szName = L( "Cstrike_RiflesLabel" );
 	eAmmoClass = BUY_PRIMAMMO;
+	SetResPaths( this, "resource/UI/BuyRifles_CT.res" );
 
 	AddWeapon( BuyMenuWeaponInfo{ "Famas", "famas", "famas", "Famas" });
 	AddWeapon( BuyMenuWeaponInfo{ "Scout_CT", "scout", "scout", "Scout" });
@@ -666,6 +733,7 @@ void CClientMachineGunsMenu::_Init()
 {
 	szName = L( "Cstrike_MachinegunsLabel" );
 	eAmmoClass = BUY_PRIMAMMO;
+	SetResPaths( this, "resource/UI/BuyMachineguns_CT.res", "resource/UI/BuyMachineguns_TER.res" );
 
 	AddWeapon( BuyMenuWeaponInfo{ "M249", "m249", "m249", "M249" });
 }
@@ -673,6 +741,7 @@ void CClientItemTMenu::_Init()
 {
 	szName = L( "Cstrike_EquipmentLabel" );
 	eAmmoClass = BUY_EQUIPMENT;
+	SetResPaths( this, "resource/UI/BuyEquipment_TER.res", "resource/UI/BuyEquipment.res" );
 
 	AddWeapon( BuyMenuWeaponInfo{ "Kevlar", "kevlar", "vest", "Kevlar" });
 	AddWeapon( BuyMenuWeaponInfo{ "Kevlar_Helmet", "kevlar_helmet", "vesthelm", "KevlarHelmet" });
@@ -685,6 +754,7 @@ void CClientItemCTMenu::_Init()
 {
 	szName = L( "Cstrike_EquipmentLabel" );
 	eAmmoClass = BUY_EQUIPMENT;
+	SetResPaths( this, "resource/UI/BuyEquipment_CT.res", "resource/UI/BuyEquipment.res" );
 
 	AddWeapon( BuyMenuWeaponInfo{ "Kevlar", "kevlar", "vest", "Kevlar" });
 	AddWeapon( BuyMenuWeaponInfo{ "Kevlar_Helmet", "kevlar_helmet", "vesthelm", "KevlarHelmet" });
