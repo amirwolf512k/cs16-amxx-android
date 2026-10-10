@@ -1413,6 +1413,79 @@ public class XashActivity extends SDLActivity {
                 }
         }
 
+        /** steam photos use the av_<account>.png naming; those age out
+         *  after a day so the folder does not fill up with every
+         *  teammate's picture forever - a player seen again just gets
+         *  the photo pulled fresh. avatar_custom.png, the starter
+         *  badges and av_default never match the pattern, and the file
+         *  the user chose in the customize menu (cl_avatar inside
+         *  config.cfg) survives even when it is a steam picture.
+         *  returns how many went. */
+        private int sweepStaleSteamAvatars( File dir, File[] files ) {
+                int gone = 0;
+                try {
+                        if( files == null ) return 0;
+
+                        long stale = System.currentTimeMillis() - 24L * 60 * 60 * 1000;
+                        String mine = ownedAvatarStem();
+
+                        for( File f : files ) {
+                                String n = f.getName().toLowerCase( java.util.Locale.US );
+                                if( !n.matches( "av_[0-9]+\\.png" )) continue;
+                                if( mine != null && mine.length() > 0 &&
+                                        ( n.equals( mine ) || n.equals( mine + ".png" )))
+                                        continue;
+                                if( f.lastModified() >= stale ) continue;
+                                if( f.delete()) gone++;
+                        }
+                } catch( Throwable t ) {
+                        Log.w( TAG, "avatar sweep failed", t );
+                }
+                return gone;
+        }
+
+        /** the customize picker records its choice as cl_avatar inside
+         *  the game's config.cfg; that name (with or without the png
+         *  ending) counts as "mine" for the cleanup pass */
+        private String ownedAvatarStem() {
+                try {
+                        File cfg = gameDirFile( "config.cfg" );
+                        if( cfg == null || !cfg.isFile()) return null;
+
+                        byte[] data = new byte[( int )Math.min( cfg.length(), 262144 )];
+                        java.io.FileInputStream in = new java.io.FileInputStream( cfg );
+                        int read = 0, n;
+                        while( read < data.length && ( n = in.read( data, read, data.length - read )) > 0 )
+                                read += n;
+                        in.close();
+                        if( read <= 0 ) return null;
+
+                        String[] lines = new String( data, 0, read, "UTF-8" ).split( "\n" );
+                        for( String line : lines ) {
+                                line = line.trim();
+                                if( !line.startsWith( "cl_avatar " ) && !line.startsWith( "cl_avatar\t" ))
+                                        continue;
+
+                                String rest = line.substring( "cl_avatar".length() ).trim();
+                                if( rest.startsWith( "\"" ) && rest.endsWith( "\"" ) && rest.length() >= 2 )
+                                        rest = rest.substring( 1, rest.length() - 1 );
+                                else if( rest.indexOf( ' ' ) >= 0 )
+                                        rest = rest.substring( 0, rest.indexOf( ' ' ));
+                                rest = rest.trim();
+
+                                int dot = rest.lastIndexOf( '.' );
+                                if( dot > 0 && ( rest.endsWith( ".png" ) || rest.endsWith( ".jpg" ) ||
+                                        rest.endsWith( ".bmp" )))
+                                        rest = rest.substring( 0, dot );
+
+                                return rest.toLowerCase( java.util.Locale.US );
+                        }
+                } catch( Throwable t ) {
+                        Log.w( TAG, "cl_avatar read failed", t );
+                }
+                return null;
+        }
+
         /** first run: drop a small set of starter badges into
          *  media/avatars so the customize picker always has something
          *  to offer and cl_avatar has a real file to point at. Anything
@@ -1435,6 +1508,16 @@ public class XashActivity extends SDLActivity {
                                                         present.add( f.getName().toLowerCase(
                                                                 java.util.Locale.US ));
                                         }
+
+                                        // every teammate's steam photo lands
+                                        // in this folder and would sit there
+                                        // forever; before seeding, the day-old
+                                        // fetched ones go, the user's own pick
+                                        // survives
+                                        int swept = sweepStaleSteamAvatars( dir, have );
+                                        if( swept > 0 )
+                                                consolePrintf( "Avatar: cleaned " + swept +
+                                                        " day-old steam avatar(s) from media/avatars" );
 
                                         String[] labels = { "CS", "16", "VIP", "PRO", "ACE", "TOP", "GG", "ZM" };
                                         int[] colors = {
@@ -1820,15 +1903,30 @@ public class XashActivity extends SDLActivity {
                                         String[] names = { "resource/LoadingDialog.res",
                                                 "resource/LoadingDialogNoBanner.res",
                                                 "resource/LoadingDialogVAC.res" };
+                                        boolean anyFile = false;
                                         for( String name : names ) {
                                                 File f = gameDirFile( name );
                                                 if( f == null || !f.isFile()) continue;
+                                                anyFile = true;
                                                 String res = readSmallFile( f );
                                                 String image = res == null ? null : extractResValue( res, "image" );
+                                                // say what the template carries, so a
+                                                // server banner that fails to show can
+                                                // be traced from the console alone
+                                                consolePrintf( "Loading banner: " + name + " (" +
+                                                        f.length() + " bytes)" +
+                                                        ( image != null ? ", image \"" + image + "\"" :
+                                                                ", no image key" ));
                                                 if( image == null || image.length() == 0 ) continue;
                                                 bmp = resolveLoadingBannerImage( image );
                                                 if( bmp != null ) break;
                                         }
+
+                                        // the plugins write the template while
+                                        // connecting, so the first load after
+                                        // joining a banner server cannot have it
+                                        if( bmp == null && !anyFile )
+                                                consolePrintf( "Loading banner: resource/LoadingDialog.res not written yet - reconnect and it shows" );
                                 } catch( Throwable t ) {
                                         Log.w( TAG, "loading banner read failed", t );
                                 }
@@ -1856,16 +1954,27 @@ public class XashActivity extends SDLActivity {
          *  path without the extension */
         private Bitmap resolveLoadingBannerImage( String image ) {
                 String[] exts = { "", ".tga", ".bmp", ".png", ".jpg" };
+                boolean anyFile = false;
                 for( String ext : exts ) {
                         String path = image + ext;
                         File f = gameDirFile( path );
                         if( f == null || !f.isFile())
                                 f = downloadDirFile( path );
                         if( f != null && f.isFile()) {
+                                anyFile = true;
                                 Bitmap bmp = decodeImageFile( f );
-                                if( bmp != null ) return bmp;
+                                if( bmp != null ) {
+                                        consolePrintf( "Loading banner: showing " + f.getAbsolutePath() );
+                                        return bmp;
+                                }
+                                // found but undecodable (odd tga flavour?) -
+                                // keep trying the other extensions
+                                consolePrintf( "Loading banner: " + f.getName() + " found but cannot be decoded" );
                         }
                 }
+                if( !anyFile )
+                        consolePrintf( "Loading banner: picture \"" + image +
+                                "\" is not under the game or the _downloads folder" );
                 return null;
         }
 

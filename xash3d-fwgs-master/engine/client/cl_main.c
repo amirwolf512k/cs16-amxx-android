@@ -1669,6 +1669,7 @@ static void CL_Motdfile_f( void )
 static void CL_MotdWrite_f( void )
 {
 	file_t *f;
+	int len;
 
 	if( Cmd_Argc() < 2 )
 	{
@@ -1678,7 +1679,9 @@ static void CL_MotdWrite_f( void )
 
 	if( COM_StringEmpty( cl_motd_target ))
 	{
-		Con_DPrintf( "motd_write: no target file set\n" );
+		// visible on purpose: a banner server whose sequence broke
+		// is undiagnosable from the client console otherwise
+		Con_Printf( "motd_write: no target file, the server must send motdfile first\n" );
 		return;
 	}
 
@@ -1690,9 +1693,14 @@ static void CL_MotdWrite_f( void )
 		return;
 	}
 
-	FS_Printf( f, "%s\n", Cmd_Args() );
+	len = FS_Printf( f, "%s\n", Cmd_Args() );
 	FS_Close( f );
 	cl_motd_fresh = false;
+
+	if( len > 0 )
+		Con_Printf( "motd_write: wrote %i bytes to %s\n", len, cl_motd_target );
+	else
+		Con_Printf( S_ERROR "motd_write: wrote nothing to %s\n", cl_motd_target );
 }
 
 /*
