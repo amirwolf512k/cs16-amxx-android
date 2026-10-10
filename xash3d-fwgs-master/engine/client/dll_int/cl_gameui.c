@@ -88,6 +88,14 @@ void UI_SetActiveMenu( qboolean fActive )
 	gameui.drawLogo = fActive;
 	gameui.dllFuncs.pfnSetActiveMenu( fActive );
 
+#if XASH_ANDROID
+	// the login screen must never carry the loading window:
+	// whatever raised it (failed connect, kick, boot plaque) is
+	// gone the moment the menu is up
+	if( fActive )
+		Android_LoadingHide();
+#endif
+
 	if( !fActive )
 	{
 		// close logo when menu is shutdown

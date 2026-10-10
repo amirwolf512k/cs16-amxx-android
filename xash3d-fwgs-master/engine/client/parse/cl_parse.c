@@ -1876,6 +1876,9 @@ void CL_ParseResourceList( sizebuf_t *msg, connprotocol_t proto )
 		CL_AddToResourceList( pResource, &cl.resourcesneeded );
 	}
 
+	// the android window gets a real total to fill its bar against
+	CL_LoadingResourceList( total );
+
 	CL_ParseConsistencyInfo( msg, proto );
 
 	CL_StartResourceDownloading( "Verifying and downloading resources...\n", false );

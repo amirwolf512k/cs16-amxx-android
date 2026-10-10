@@ -104,19 +104,52 @@ static float s_flAvatarNextProbe[MAX_PLAYERS+1];
 static bool s_pAvatarWarned[MAX_PLAYERS+1];
 static cvar_t *cl_avatar = NULL;
 
+// account number out of a colon sid tail: "0:905" and "0:0:905"
+// both spell STEAM_0:0:905 - the number after the last colon is the
+// id half, the one right before it the auth bit
+static bool Scoreboard_SidTailAccount( const char *s, int *account )
+{
+	const char *last, *num;
+	char ybuf[16];
+	size_t len;
+	int z, y;
+
+	last = strrchr( s, ':' );
+	if( !last || last == s )
+		return false;
+
+	if( sscanf( last + 1, "%d", &z ) != 1 || z < 0 )
+		return false;
+
+	num = last;
+	while( num > s && isdigit( (unsigned char)num[-1] ))
+		num--;
+	len = last - num;
+	if( len <= 0 || len >= sizeof( ybuf ))
+		return false;
+
+	memcpy( ybuf, num, len );
+	ybuf[len] = 0;
+	y = atoi( ybuf );
+	if( y < 0 )
+		return false;
+
+	*account = z * 2 + ( y & 1 );
+	return true;
+}
+
 // reunion/dproto servers put the steamid into userinfo "*sid";
 // fold whatever spelling it is to the bare account number
 static bool Scoreboard_AvatarAccount( const char *sid, int *account )
 {
-	int x = 0, y = 0;
+	int y = 0;
 
 	if( !sid || !sid[0] )
 		return false;
 
 	if( !strnicmp( sid, "STEAM_", 6 ))
 	{
-		if( sscanf( sid + 6, ":%d:%d", &x, &y ) != 2 || y < 0 )
-			return false;
+		return Scoreboard_SidTailAccount( sid + 6, account );
 	}
 	else if( sid[0] == '[' )
 	{
@@ -127,20 +160,33 @@ static bool Scoreboard_AvatarAccount( const char *sid, int *account )
 	}
 	else if( isdigit( (unsigned char)sid[0] ) && strchr( sid, ':' ))
 	{
-		if( sscanf( sid, "%d:%d", &x, &y ) != 2 || y < 0 )
-			return false;
+		return Scoreboard_SidTailAccount( sid, account );
 	}
 	else if( isdigit( (unsigned char)sid[0] ))
 	{
-		*account = atoi( sid );
-		return *account > 0;
+		// a bare steamid64 (some reunion builds write it into *sid)
+		// or a bare account number; atoi overflows the long form and
+		// the photo silently never resolves
+		unsigned long long v = strtoull( sid, NULL, 10 );
+
+		if( v > 0xFFFFFFFFULL )
+		{
+			if( v <= 76561197960265728ULL )
+				return false;
+			v -= 76561197960265728ULL;
+		}
+
+		if( v == 0 || v > 0xFFFFFFFFULL )
+			return false;
+
+		*account = ( int )v;
+		return true;
 	}
 	else
 	{
 		return false;
 	}
 
-	*account = y * 2 + x;
 	return *account > 0;
 }
 

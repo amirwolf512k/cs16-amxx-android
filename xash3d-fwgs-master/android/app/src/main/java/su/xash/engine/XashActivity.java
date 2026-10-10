@@ -904,6 +904,8 @@ public class XashActivity extends SDLActivity {
         private FrameLayout mLoadingOverlay;
         private LoadingBar mLoadingBar;
         private TextView mLoadingStatus;
+        private TextView mLoadingPct;
+        private ImageView mLoadingBanner;
         private String mLoadingServer = "";
 
         // stats block of the loading window, filled from the goldsrc
@@ -928,6 +930,10 @@ public class XashActivity extends SDLActivity {
                         if( mPercent == p ) return;
                         mPercent = p;
                         invalidate();
+                }
+
+                float getPercent() {
+                        return mPercent;
                 }
 
                 @Override
@@ -980,11 +986,18 @@ public class XashActivity extends SDLActivity {
                         @Override public void run() {
                                 if( mLoadingOverlay == null ) return;
                                 try {
-                                        if( mLoadingStatus != null && text != null &&
+                                        if( mLoadingStatus != null && text != null && text.length() > 0 &&
                                                 !text.contentEquals( mLoadingStatus.getText() ))
                                                 mLoadingStatus.setText( text );
-                                        if( mLoadingBar != null )
-                                                mLoadingBar.setPercent( percent );
+                                        if( mLoadingBar != null ) {
+                                                // percent < 0 means "busy, nothing measured":
+                                                // the bar keeps whatever it already shows
+                                                if( percent >= 0f )
+                                                        mLoadingBar.setPercent( percent );
+                                                if( mLoadingPct != null )
+                                                        mLoadingPct.setText( mLoadingBar.getPercent() >= 0f ?
+                                                                Math.round( mLoadingBar.getPercent() ) + "%" : "" );
+                                        }
                                 } catch( Throwable t ) {
                                         Log.w( TAG, "loadingStatus failed", t );
                                 }
@@ -1282,6 +1295,11 @@ public class XashActivity extends SDLActivity {
         private final java.util.Set<Long> mAvatarFetched =
                 java.util.Collections.synchronizedSet( new java.util.HashSet<Long>() );
 
+        // logged once per id: the accounts the photo sources can not
+        // answer for right now, so the log stays readable
+        private final java.util.Set<Long> mAvatarFailLogged =
+                java.util.Collections.synchronizedSet( new java.util.HashSet<Long>() );
+
         private static final Object AVATAR_RATE_LOCK = new Object();
         private static long sAvatarLastFetch;
 
@@ -1328,6 +1346,15 @@ public class XashActivity extends SDLActivity {
                                                         "https://steamcommunity.com/profiles/" + steamid64 + "/?xml=1" );
                                                 String url = xml == null ? null : extractXmlTag( xml, "avatarFull" );
 
+                                                // steamcommunity answers nothing on some
+                                                // filtered networks (iran without a vpn);
+                                                // playerdb.co mirrors the same photo
+                                                if( url == null || url.length() == 0 ) {
+                                                        String json = httpGetString(
+                                                                "https://playerdb.co/api/player/steam/" + steamid64 );
+                                                        url = json == null ? null : extractJsonString( json, "avatar" );
+                                                }
+
                                                 if( url != null && url.length() > 0 ) {
                                                         byte[] img = httpGetBytes( url );
                                                         if( img != null && img.length >= 64 ) {
@@ -1351,6 +1378,9 @@ public class XashActivity extends SDLActivity {
                                 // not fetched this round: free the slot and try
                                 // again in a minute, the rate limiter keeps it gentle
                                 mAvatarFetched.remove( key );
+                                if( mAvatarFailLogged.add( key ))
+                                        consolePrintf( "Avatar: no photo for account " + account +
+                                                " yet (network blocked? retrying every minute)" );
                                 new android.os.Handler( android.os.Looper.getMainLooper()).postDelayed(
                                         new Runnable() {
                                                 @Override public void run() {
@@ -1441,22 +1471,30 @@ public class XashActivity extends SDLActivity {
                                                 wrote = true;
                                         }
 
-                                        // steam's own default picture for the
-                                        // players whose photo can't be resolved
-                                        // (bots, no sid): it is what steam itself
-                                        // shows on the web, nothing made up
                                         File def = new File( dir, "av_default.png" );
                                         if( !def.isFile() || def.length() == 0 ) {
-                                                byte[] img = httpGetBytes(
-                                                        "https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg" );
-                                                if( img != null && img.length > 64 ) {
-                                                        Bitmap bmp = BitmapFactory.decodeByteArray( img, 0, img.length );
-                                                        if( bmp != null ) {
-                                                                java.io.FileOutputStream fos = new java.io.FileOutputStream( def );
-                                                                bmp.compress( Bitmap.CompressFormat.PNG, 90, fos );
-                                                                fos.close();
-                                                                bmp.recycle();
-                                                        }
+                                                // steam's own default picture (bots, players
+                                                // without a sid); pulled from the cdn when it
+                                                // answers, drawn as the same gray silhouette
+                                                // when the network blocks it - the slot must
+                                                // never end up empty
+                                                Bitmap bmp = null;
+                                                try {
+                                                        byte[] img = httpGetBytes(
+                                                                "https://avatars.akamai.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg" );
+                                                        if( img != null && img.length > 64 )
+                                                                bmp = BitmapFactory.decodeByteArray( img, 0, img.length );
+                                                } catch( Throwable t2 ) {
+                                                        Log.w( TAG, "default avatar fetch failed", t2 );
+                                                }
+                                                if( bmp == null )
+                                                        bmp = drawDefaultAvatar();
+
+                                                if( bmp != null ) {
+                                                        java.io.FileOutputStream fos = new java.io.FileOutputStream( def );
+                                                        bmp.compress( Bitmap.CompressFormat.PNG, 90, fos );
+                                                        fos.close();
+                                                        bmp.recycle();
                                                 }
                                         }
 
@@ -1638,12 +1676,49 @@ public class XashActivity extends SDLActivity {
                 dialog.addView( status, statusLp );
                 mLoadingStatus = status;
 
+                // bar plus the numeric percent, so the fill reads as a
+                // number too while it climbs
+                LinearLayout barRow = new LinearLayout( this );
+                barRow.setGravity( Gravity.CENTER_VERTICAL );
+
                 LoadingBar bar = new LoadingBar( this );
-                LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, dp( 18 ));
-                barLp.topMargin = dp( 8 );
-                dialog.addView( bar, barLp );
+                barRow.addView( bar, new LinearLayout.LayoutParams(
+                        0, dp( 18 ), 1f ));
+
+                TextView pct = new TextView( this );
+                pct.setText( "" );
+                pct.setTextColor( LOADING_TITLE );
+                pct.setTextSize( TypedValue.COMPLEX_UNIT_SP, 12 );
+                pct.setTypeface( Typeface.DEFAULT_BOLD );
+                pct.setMinWidth( dp( 36 ));
+                pct.setGravity( Gravity.END );
+                LinearLayout.LayoutParams pctLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                pctLp.leftMargin = dp( 8 );
+                barRow.addView( pct, pctLp );
+
+                LinearLayout.LayoutParams barRowLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                barRowLp.topMargin = dp( 8 );
+                dialog.addView( barRow, barRowLp );
                 mLoadingBar = bar;
+                mLoadingPct = pct;
+
+                // server banner slot: the classic loading-banner plugins
+                // drop resource/LoadingDialog.res next to the game files;
+                // if it is on disk we show its picture under the bar,
+                // exactly where the pc client put it. stays hidden until
+                // a picture actually loads.
+                ImageView banner = new ImageView( this );
+                banner.setVisibility( View.GONE );
+                banner.setScaleType( ImageView.ScaleType.FIT_CENTER );
+                banner.setAdjustViewBounds( true );
+                LinearLayout.LayoutParams bannerLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                bannerLp.topMargin = dp( 8 );
+                dialog.addView( banner, bannerLp );
+                mLoadingBanner = banner;
+                loadLoadingBanner( overlay, banner );
 
                 LinearLayout cancelRow = new LinearLayout( this );
                 cancelRow.setGravity( Gravity.END );
@@ -1695,12 +1770,171 @@ public class XashActivity extends SDLActivity {
                 mLoadingOverlay = null;
                 mLoadingBar = null;
                 mLoadingStatus = null;
+                mLoadingPct = null;
+                mLoadingBanner = null;
 
                 try {
                         ViewGroup parent = ( ViewGroup )overlay.getParent();
                         if( parent != null ) parent.removeView( overlay );
                 } catch( Throwable t ) {
                         Log.w( TAG, "loading overlay remove failed", t );
+                }
+        }
+
+        /** The classic server loading banner: the plugin writes the
+         *  vgui template into resource/LoadingDialog.res (and friends)
+         *  with motdfile/motd_write and the pc client shows the image
+         *  under the progress bar. Read it the same way here. */
+        private void loadLoadingBanner( final FrameLayout overlay, final ImageView view ) {
+                Thread t = new Thread( new Runnable() {
+                        @Override public void run() {
+                                Bitmap bmp = null;
+                                try {
+                                        String[] names = { "resource/LoadingDialog.res",
+                                                "resource/LoadingDialogNoBanner.res",
+                                                "resource/LoadingDialogVAC.res" };
+                                        for( String name : names ) {
+                                                File f = gameDirFile( name );
+                                                if( f == null || !f.isFile()) continue;
+                                                String res = readSmallFile( f );
+                                                String image = res == null ? null : extractResValue( res, "image" );
+                                                if( image == null || image.length() == 0 ) continue;
+                                                bmp = resolveLoadingBannerImage( image );
+                                                if( bmp != null ) break;
+                                        }
+                                } catch( Throwable t ) {
+                                        Log.w( TAG, "loading banner read failed", t );
+                                }
+
+                                final Bitmap fb = bmp;
+                                if( fb == null ) return;
+                                runOnUiThread( new Runnable() {
+                                        @Override public void run() {
+                                                try {
+                                                        if( mLoadingOverlay != overlay ) return;
+                                                        view.setImageBitmap( fb );
+                                                        view.setVisibility( View.VISIBLE );
+                                                } catch( Throwable ignored ) {}
+                                        }
+                                });
+                        }
+                });
+                t.setDaemon( true );
+                t.start();
+        }
+
+        /** resolve the image path from the .res against the game dir
+         *  and the <game>_downloads tree (that is where the tga lands
+         *  after the precache download); the pc templates carry the
+         *  path without the extension */
+        private Bitmap resolveLoadingBannerImage( String image ) {
+                String[] exts = { "", ".tga", ".bmp", ".png", ".jpg" };
+                for( String ext : exts ) {
+                        String path = image + ext;
+                        File f = gameDirFile( path );
+                        if( f == null || !f.isFile())
+                                f = downloadDirFile( path );
+                        if( f != null && f.isFile()) {
+                                Bitmap bmp = decodeImageFile( f );
+                                if( bmp != null ) return bmp;
+                        }
+                }
+                return null;
+        }
+
+        /** game-relative path inside the <game>_downloads tree where
+         *  the engine stores files the server made us download */
+        private File downloadDirFile( String relPath ) {
+                try {
+                        String base = mMotdBaseDir != null ? mMotdBaseDir
+                                : Environment.getExternalStorageDirectory().getAbsolutePath() + "/xash";
+                        String game = mMotdGameDir != null ? mMotdGameDir : "valve";
+                        File f = new File( base, game + "_downloads/" + relPath );
+                        return f.getCanonicalPath().startsWith( new File( base ).getCanonicalPath() ) ? f : null;
+                } catch( Throwable t ) {
+                        return null;
+                }
+        }
+
+        private static String readSmallFile( File f ) {
+                try {
+                        long len = Math.min( f.length(), 8192 );
+                        byte[] buf = new byte[( int )len];
+                        java.io.FileInputStream in = new java.io.FileInputStream( f );
+                        int read = 0, n;
+                        while( read < buf.length && ( n = in.read( buf, read, buf.length - read )) > 0 )
+                                read += n;
+                        in.close();
+                        if( read <= 0 ) return null;
+                        return new String( buf, 0, read, "UTF-8" );
+                } catch( Throwable t ) {
+                        return null;
+                }
+        }
+
+        /** one "key" "value" pair out of a one-line vgui .res */
+        private static String extractResValue( String s, String key ) {
+                String needle = "\"" + key + "\"";
+                int i = s.indexOf( needle );
+                if( i < 0 ) return null;
+                i = s.indexOf( '"', i + needle.length() );
+                if( i < 0 ) return null;
+                int e = s.indexOf( '"', i + 1 );
+                if( e < 0 ) return null;
+                return s.substring( i + 1, e );
+        }
+
+        /** one plain string field out of a small json reply, with the
+         *  escapes the steam cdn urls actually use */
+        private static String extractJsonString( String json, String field ) {
+                try {
+                        String needle = "\"" + field + "\"";
+                        int i = json.indexOf( needle );
+                        if( i < 0 ) return null;
+                        i = json.indexOf( ':', i + needle.length() );
+                        if( i < 0 ) return null;
+                        i = json.indexOf( '"', i + 1 );
+                        if( i < 0 ) return null;
+                        StringBuilder b = new StringBuilder();
+                        for( int e = i + 1; e < json.length(); e++ ) {
+                                char c = json.charAt( e );
+                                if( c == '\\' && e + 1 < json.length() ) {
+                                        char n2 = json.charAt( ++e );
+                                        if( n2 == 'u' ) {
+                                                b.appendCodePoint( Integer.parseInt( json.substring( e + 1, e + 5 ), 16 ));
+                                                e += 4;
+                                        } else if( n2 == '/' ) b.append( '/' );
+                                        else b.append( n2 );
+                                        continue;
+                                }
+                                if( c == '"' ) return b.toString();
+                                b.append( c );
+                        }
+                } catch( Throwable ignored ) {}
+                return null;
+        }
+
+        /** the steam-style gray silhouette for players the photo
+         *  sources can not answer for, drawn locally so the avatar
+         *  slot never ends up empty */
+        private static Bitmap drawDefaultAvatar() {
+                try {
+                        Bitmap bmp = Bitmap.createBitmap( 184, 184, Bitmap.Config.ARGB_8888 );
+                        android.graphics.Canvas cv = new android.graphics.Canvas( bmp );
+                        Paint p = new Paint( Paint.ANTI_ALIAS_FLAG );
+
+                        p.setColor( 0xFF8F989B );
+                        cv.drawRect( 0, 0, 184, 184, p );
+
+                        p.setColor( 0xFFDCDEE0 );
+                        cv.drawCircle( 92, 66, 34, p );
+
+                        android.graphics.RectF body = new android.graphics.RectF( 18, 116, 166, 260 );
+                        cv.drawOval( body, p );
+
+                        return bmp;
+                } catch( Throwable t ) {
+                        return null;
                 }
         }
 

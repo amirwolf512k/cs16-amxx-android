@@ -15,6 +15,7 @@ GNU General Public License for more details.
 
 #include "common.h"
 #include "netchan.h"
+#include "client/client.h" // CL_LoadingDownloadProgress
 #include "platform/platform.h"
 #include "xash3d_mathlib.h"
 #include "net_encode.h"
@@ -1494,21 +1495,13 @@ void Netchan_UpdateProgress( netchan_t *chan )
 		// when something actually moved
 		if( host.downloadcount != lastcount || fabs( scr_download.value - lastpercent ) >= 0.5f )
 		{
-			char status[MAX_SYSPATH];
-
 			lastcount = host.downloadcount;
 			lastpercent = scr_download.value;
 
 			if( lastcount > 0 && !COM_StringEmpty( host.downloadfile ))
-			{
-				Q_snprintf( status, sizeof( status ), "Downloading %s (%d file%s left)",
-					host.downloadfile, lastcount, lastcount == 1 ? "" : "s" );
-				Android_LoadingStatus( status, lastpercent );
-			}
+				CL_LoadingDownloadProgress( host.downloadfile, lastpercent / 100.0f );
 			else if( lastcount == 0 && lastpercent >= 0.0f )
-			{
-				Android_LoadingStatus( "Finishing downloads...", lastpercent );
-			}
+				CL_LoadingDownloadProgress( NULL, lastpercent / 100.0f );
 		}
 	}
 #endif // XASH_ANDROID

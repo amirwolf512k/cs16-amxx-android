@@ -1307,10 +1307,7 @@ void HTTP_Run( void )
 		if( printable && ( percent - lastpercent >= 0.5f || percent < lastpercent ||
 			Q_strcmp( activefile, lastname )))
 		{
-			char status[MAX_SYSPATH];
-
-			Q_snprintf( status, sizeof( status ), "Downloading %s", activefile );
-			Android_LoadingStatus( status, percent );
+			CL_LoadingDownloadProgress( activefile, percent / 100.0f );
 			Q_strncpy( lastname, activefile, sizeof( lastname ));
 			lastpercent = percent;
 		}

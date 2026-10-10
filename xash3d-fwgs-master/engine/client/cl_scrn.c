@@ -510,9 +510,16 @@ void SCR_BeginLoadingPlaque( qboolean is_background )
 	// disconnected check: the very first connect and the first local
 	// map start are still ca_disconnected here, and the early return
 	// below was eating the window exactly when it matters most.
-	// Background map loads stay engine-drawn.
-	if( !is_background )
+	// Background map loads stay engine-drawn. Booting into the main
+	// menu also runs a plaque - with nothing loading behind it, so
+	// the window and its stats block must not sit on the login screen.
+	if( !is_background && !( cls.key_dest == key_menu &&
+		cls.state == ca_disconnected &&
+		GameState->nextstate == STATE_RUNFRAME ))
+	{
+		CL_LoadingReset();
 		Android_LoadingShow( cls.servername );
+	}
 #endif
 
 	if( cls.state == ca_disconnected || cls.disable_screen )

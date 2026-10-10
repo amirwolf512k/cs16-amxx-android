@@ -1198,19 +1198,24 @@ static void CL_GetCDKey( char *protinfo, size_t protinfosize )
 
 // turns "STEAM_0:X:Y", "[U:1:Z]", a steamid64 or a bare account
 // number into the 32-bit account part servers build STEAM_0:X:Y from
+static qboolean CL_SidTailAccount( const char *s, uint64_t *account );
+
 static qboolean CL_ParseSteamIDAccount( const char *s, uint32_t *account )
 {
 	uint64_t v;
-	int x, y;
 
 	if( COM_StringEmpty( s ))
 		return false;
 
 	if( !Q_strnicmp( s, "STEAM_", 6 ))
 	{
-		if( sscanf( s + 6, ":%d:%d", &x, &y ) != 2 || ( x != 0 && x != 1 ) || y < 0 )
+		uint64_t acc;
+
+		// "STEAM_0:0:905" spells out as universe:auth:id, the old
+		// ":%d:%d" scan never matched a real one
+		if( !CL_SidTailAccount( s + 6, &acc ) || acc > 0xFFFFFFFFULL )
 			return false;
-		*account = ( uint32_t )y * 2 + x;
+		*account = ( uint32_t )acc;
 		return true;
 	}
 
@@ -1322,6 +1327,40 @@ void CL_SendGoldSrcConnectPacket( netadr_t adr, int challenge, const void *ticke
 	Con_Printf( "Trying to connect with GoldSrc 48 protocol\n" );
 }
 
+// account number out of a colon sid tail: "0:905" and "0:0:905"
+// both spell STEAM_0:0:905 - the number after the last colon is the
+// id half, the one right before it the auth bit
+static qboolean CL_SidTailAccount( const char *s, uint64_t *account )
+{
+	const char *last, *num;
+	char ybuf[16];
+	size_t len;
+	int z, y;
+
+	last = strrchr( s, ':' );
+	if( !last || last == s )
+		return false;
+
+	if( sscanf( last + 1, "%d", &z ) != 1 || z < 0 )
+		return false;
+
+	num = last;
+	while( num > s && isdigit( (unsigned char)num[-1] ))
+		num--;
+	len = last - num;
+	if( len <= 0 || len >= sizeof( ybuf ))
+		return false;
+
+	memcpy( ybuf, num, len );
+	ybuf[len] = 0;
+	y = atoi( ybuf );
+	if( y < 0 )
+		return false;
+
+	*account = ( uint64_t )z * 2 + ( y & 1 );
+	return true;
+}
+
 /*
 =======================
 CL_AvatarUserInfo
@@ -1336,39 +1375,49 @@ void CL_AvatarUserInfo( const char *sid )
 	static uint64_t fetched[64];
 	static int fetched_count;
 	uint64_t id64, account;
-	int x = 0, y = 0, i;
+	int i;
 
 	if( COM_StringEmpty( sid ))
 		return;
 
 	if( !Q_strnicmp( sid, "STEAM_", 6 ))
 	{
-		if( sscanf( sid + 6, ":%d:%d", &x, &y ) != 2 || y < 0 )
+		if( !CL_SidTailAccount( sid + 6, &account ))
 			return;
 	}
 	else if( sid[0] == '[' )
 	{
+		int y;
+
 		if( sscanf( sid, "[U:1:%d]", &y ) != 1 || y < 0 )
 			return;
-		x = 0;
+		account = ( uint64_t )y;
 	}
 	else if( Q_isdigit( sid ) && strchr( sid, ':' ))
 	{
-		if( sscanf( sid, "%d:%d", &x, &y ) != 2 || y < 0 )
+		if( !CL_SidTailAccount( sid, &account ))
 			return;
 	}
 	else if( Q_isdigit( sid ))
 	{
-		y = atoi( sid );
-		x = 0;
+		// a bare steamid64 (some reunion builds write it into *sid)
+		// or a bare account number. atoi overflows the long form and
+		// then no real photo ever resolves for the player
+		account = ( uint64_t )strtoull( sid, NULL, 10 );
+
+		if( account > 0xFFFFFFFFULL )
+		{
+			if( account <= 76561197960265728ULL )
+				return;
+			account -= 76561197960265728ULL;
+		}
 	}
 	else
 	{
 		return;
 	}
 
-	account = ( uint64_t )y * 2 + x;
-	if( account <= 0 || account > 0xFFFFFFFFULL )
+	if( account == 0 || account > 0xFFFFFFFFULL )
 		return;
 
 	id64 = 76561197960265728ULL + account;
@@ -1384,6 +1433,178 @@ void CL_AvatarUserInfo( const char *sid )
 
 	Con_DPrintf( "avatar: fetching steam avatar for account %u\n", ( unsigned )account );
 	Android_AvatarFetch( id64 );
+}
+
+/*
+=======================
+Android loading window progress
+
+one place turns the whole resource pipeline - verify, download,
+precache - into a single monotonic bar for the platform window, so
+the feeders (http, netchan, resource lists) stop fighting over the
+percent and the yellow fill always moves while something loads.
+=======================
+*/
+static int cl_loading_filetotal;
+static int cl_loading_filedone;
+static char cl_loading_lasttext[MAX_SYSPATH];
+static float cl_loading_lastpct = -1.0f;
+static double cl_loading_lastdl;
+static double cl_loading_lastpush;
+
+void CL_LoadingReset( void )
+{
+	cl_loading_filetotal = 0;
+	cl_loading_filedone = 0;
+	cl_loading_lasttext[0] = 0;
+	cl_loading_lastpct = -1.0f;
+	cl_loading_lastdl = 0.0;
+	cl_loading_lastpush = 0.0;
+}
+
+void CL_LoadingResourceList( int total )
+{
+	CL_LoadingReset();
+	cl_loading_filetotal = total;
+}
+
+static void CL_LoadingPush( const char *text, float percent )
+{
+	// bursts of local file checks arrive within one frame; cross
+	// the jni bridge only when something visible has moved
+	if( percent < 100.0f && host.realtime - cl_loading_lastpush < 0.05 &&
+		percent - cl_loading_lastpct < 0.4f )
+		return;
+
+	Q_strncpy( cl_loading_lasttext, text, sizeof( cl_loading_lasttext ));
+	cl_loading_lastpct = percent;
+	cl_loading_lastpush = host.realtime;
+
+	Android_LoadingStatus( text, percent );
+}
+
+static void CL_LoadingPrecache( const char *name, int done, int total )
+{
+	char text[MAX_SYSPATH];
+
+	if( total <= 0 || COM_StringEmpty( name ))
+		return;
+
+	Q_snprintf( text, sizeof( text ), "Loading %s", name );
+	CL_LoadingPush( text, 67.0f + 30.0f * bound( 0.0f, ( float )done / ( float )total, 1.0f ));
+}
+
+void CL_LoadingFileDone( const char *name )
+{
+	char text[MAX_SYSPATH];
+
+	if( cl_loading_filetotal <= 0 || cl_loading_filedone >= cl_loading_filetotal )
+		return;
+
+	cl_loading_filedone++;
+
+	// while bytes move the download feeder owns the status line,
+	// these silent bumps keep its percent exact
+	if( host.realtime - cl_loading_lastdl < 1.0 )
+		return;
+
+	Q_snprintf( text, sizeof( text ), "Checking %s", name );
+	CL_LoadingPush( text, 5.0f + 60.0f * ( float )cl_loading_filedone / ( float )cl_loading_filetotal );
+}
+
+void CL_LoadingDownloadProgress( const char *file, float filefrac )
+{
+	char text[MAX_SYSPATH];
+	float percent;
+	int left;
+
+	cl_loading_lastdl = host.realtime;
+
+	if( cl_loading_filetotal <= 0 )
+	{
+		Android_LoadingStatus( "Downloading resources...", -1.0f );
+		return;
+	}
+
+	left = cl_loading_filetotal - cl_loading_filedone;
+	percent = 5.0f + 60.0f * bound( 0.0f, (( float )cl_loading_filedone + filefrac ) /
+		( float )cl_loading_filetotal, 1.0f );
+
+	if( file && !COM_StringEmpty( file ))
+		Q_snprintf( text, sizeof( text ), "Downloading %s (%d file%s left)", file,
+			left, left == 1 ? "" : "s" );
+	else Q_snprintf( text, sizeof( text ), "Finishing downloads..." );
+
+	CL_LoadingPush( text, percent );
+}
+
+/*
+=======================
+CL_Motdfile_f / CL_MotdWrite_f
+
+the pc client let servers write one-line vgui templates with
+motdfile/motd_write - that is how the classic loading-banner
+plugins put their picture into resource/LoadingDialog.res and the
+client drew it under the loading bar. answer the same commands, but
+the target is pinned to resource/*.res so nothing else on disk is
+reachable through them.
+=======================
+*/
+static char cl_motd_target[MAX_QPATH];
+static qboolean cl_motd_fresh;
+
+static void CL_Motdfile_f( void )
+{
+	const char *name = Cmd_Argv( 1 );
+
+	cl_motd_target[0] = 0;
+	cl_motd_fresh = false;
+
+	if( Cmd_Argc() != 2 )
+	{
+		Con_Printf( S_USAGE "motdfile <name>\n" );
+		return;
+	}
+
+	if( Q_strncmp( name, "resource", 8 ) || Q_strstr( name, ".." ) ||
+		strchr( name, '\\' ) || strchr( name, ':' ) ||
+		!Q_stristr( name, ".res" ))
+	{
+		Con_Printf( "motdfile: refusing \"%s\"\n", name );
+		return;
+	}
+
+	Q_strncpy( cl_motd_target, name, sizeof( cl_motd_target ));
+	cl_motd_fresh = true;
+}
+
+static void CL_MotdWrite_f( void )
+{
+	file_t *f;
+
+	if( Cmd_Argc() < 2 )
+	{
+		Con_Printf( S_USAGE "motd_write <text>\n" );
+		return;
+	}
+
+	if( COM_StringEmpty( cl_motd_target ))
+	{
+		Con_DPrintf( "motd_write: no target file set\n" );
+		return;
+	}
+
+	f = FS_Open( cl_motd_target, cl_motd_fresh ? "w" : "a", true );
+
+	if( !f )
+	{
+		Con_Printf( S_ERROR "motd_write: cannot write %s\n", cl_motd_target );
+		return;
+	}
+
+	FS_Printf( f, "%s\n", Cmd_Args() );
+	FS_Close( f );
+	cl_motd_fresh = false;
 }
 
 /*
@@ -3647,6 +3868,13 @@ qboolean CL_PrecacheResources( void )
 {
 	resource_t	*pRes;
 
+	// the android loading window shows the registration pass too:
+	// every model and sound that goes in moves the yellow bar
+	int precache_total = 0, precache_done = 0;
+
+	for( pRes = cl.resourcesonhand.pNext; pRes && pRes != &cl.resourcesonhand; pRes = pRes->pNext )
+		precache_total++;
+
 	// if we downloaded new WAD files or any other archives they must be added to searchpath
 	if( CL_ShouldRescanFilesystem( ))
 		FS_Rescan_f();
@@ -3663,6 +3891,8 @@ qboolean CL_PrecacheResources( void )
 		cl.models[pRes->nIndex] = Mod_LoadWorld( pRes->szFileName, true );
 		SetBits( pRes->ucFlags, RES_PRECACHED );
 		cl.nummodels = 1;
+		precache_done++;
+		CL_LoadingPrecache( pRes->szFileName, precache_done, precache_total );
 		break;
 	}
 
@@ -3785,7 +4015,12 @@ qboolean CL_PrecacheResources( void )
 		}
 
 		SetBits( pRes->ucFlags, RES_PRECACHED );
+		precache_done++;
+		CL_LoadingPrecache( pRes->szFileName, precache_done, precache_total );
 	}
+
+	// all resources are in, the server world builds next
+	CL_LoadingPush( "Preparing map...", 97.0f );
 
 	// make sure modelcount is in-range
 	cl.nummodels = bound( 0, cl.nummodels, MAX_MODELS );
@@ -4009,6 +4244,8 @@ static void CL_InitLocal( void )
 	Cmd_AddRestrictedCommand ("connect", CL_Connect_f, "connect to a server by hostname" );
 	Cmd_AddCommand ("reconnect", CL_Reconnect_f, "reconnect to current level" );
 	Cmd_AddCommand ("retry", CL_Retry_f, "retry connection to last server" );
+	Cmd_AddCommand ("motdfile", CL_Motdfile_f, "server picks the client file the next motd_write writes to" );
+	Cmd_AddCommand ("motd_write", CL_MotdWrite_f, "server writes one line into the motdfile target" );
 
 	Cmd_AddRestrictedCommand ("rcon", CL_Rcon_f, "sends a command to the server console (rcon_password and rcon_address required)" );
 

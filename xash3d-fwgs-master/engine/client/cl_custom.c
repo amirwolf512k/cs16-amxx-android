@@ -170,6 +170,10 @@ void CL_MoveToOnHandList( resource_t *pResource )
 
 	CL_RemoveFromResourceList( pResource );
 	CL_AddToResourceList( pResource, &cl.resourcesonhand );
+
+	// every resource that lands here (verified locally or downloaded)
+	// moves the android loading window bar forward
+	CL_LoadingFileDone( pResource->szFileName );
 }
 
 static void CL_ClearResourceList( resource_t *pList )
