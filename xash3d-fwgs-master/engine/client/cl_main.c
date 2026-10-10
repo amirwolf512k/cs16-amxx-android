@@ -1432,7 +1432,9 @@ void CL_AvatarUserInfo( const char *sid )
 		fetched[fetched_count++] = id64;
 
 	Con_DPrintf( "avatar: fetching steam avatar for account %u\n", ( unsigned )account );
+#if XASH_ANDROID
 	Android_AvatarFetch( id64 );
+#endif
 }
 
 /*
@@ -1480,7 +1482,9 @@ static void CL_LoadingPush( const char *text, float percent )
 	cl_loading_lastpct = percent;
 	cl_loading_lastpush = host.realtime;
 
+#if XASH_ANDROID
 	Android_LoadingStatus( text, percent );
+#endif
 }
 
 static void CL_LoadingPrecache( const char *name, int done, int total )
@@ -1522,7 +1526,9 @@ void CL_LoadingDownloadProgress( const char *file, float filefrac )
 
 	if( cl_loading_filetotal <= 0 )
 	{
+#if XASH_ANDROID
 		Android_LoadingStatus( "Downloading resources...", -1.0f );
+#endif
 		return;
 	}
 
