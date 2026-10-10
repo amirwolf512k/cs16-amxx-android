@@ -776,6 +776,7 @@ CL_ParseServerData
 static void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
 {
 	char	gamefolder[MAX_QPATH];
+	char	hostname[MAX_QPATH]; // real server name for the loading window
 	string	mapfile;
 	qboolean	background;
 	int	i, required_version;
@@ -826,7 +827,10 @@ static void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
 		MSG_SeekToBit( msg, sizeof( uint8_t ) << 3, SEEK_CUR ); // quake leftover, coop flag
 
 		Q_strncpy( gamefolder, MSG_ReadString( msg ), sizeof( gamefolder ));
-		Con_Printf( "Remote host: %s\n", MSG_ReadString( msg ));
+		// goldsrc serverdata carries the hostname right after the
+		// gamedir (ReHLDS SV_SendServerinfo); keep it for the stats panel
+		Q_strncpy( hostname, MSG_ReadString( msg ), sizeof( hostname ));
+		Con_Printf( "Remote host: %s\n", hostname );
 		// map name is sent as maps/<name>.bsp, only strip the maps/ prefix to keep subdirectories intact
 		s = MSG_ReadString( msg );
 		if( !Q_strnicmp( s, "maps/", 5 ))
@@ -861,6 +865,7 @@ static void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
 		Q_strncpy( clgame.maptitle, MSG_ReadString( msg ), sizeof( clgame.maptitle ));
 		background = MSG_ReadOneBit( msg );
 		Q_strncpy( gamefolder, MSG_ReadString( msg ), sizeof( gamefolder ));
+		Q_strncpy( hostname, cls.servername, sizeof( hostname ));
 		Host_ValidateEngineFeatures( ENGINE_FEATURES_MASK, MSG_ReadDword( msg ));
 
 		// receive the player hulls
@@ -880,6 +885,10 @@ static void CL_ParseServerData( sizebuf_t *msg, connprotocol_t proto )
 		return;
 	}
 
+#if XASH_ANDROID
+	// fill the CS 1.6 style loading window stats panel
+	Android_LoadingStats( hostname, clgame.mapname, cl.maxclients );
+#endif
 	Q_snprintf( mapfile, sizeof( mapfile ), "maps/%s.bsp", clgame.mapname );
 	if( CRC32_MapFile( &cl.worldmapCRC, mapfile, cl.maxclients > 1 ))
 	{

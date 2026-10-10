@@ -37,6 +37,7 @@ struct jnimethods_s
         jmethodID showMOTD; // sandboxed HTML MOTD dialog
         jmethodID loadingShow; // CS 1.6 style loading window
         jmethodID loadingStatus;
+        jmethodID loadingStats; // server / map / slots for the stats panel
         jmethodID loadingBannerFile;
         jmethodID loadingHide;
         jmethodID avatarFetch; // steam avatar for the scoreboard
@@ -117,6 +118,41 @@ void Android_LoadingStatus( const char *text, float percent )
 
         (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.loadingStatus, jstr, percent );
         (*jni.env)->DeleteLocalRef( jni.env, jstr );
+
+        if( (*jni.env)->ExceptionCheck( jni.env ))
+                (*jni.env)->ExceptionClear( jni.env );
+}
+
+/*
+========================
+Android_LoadingStats
+
+fill the stats panel: real server hostname (goldsrc serverdata
+carries it right after the gamedir), current map, slot count.
+========================
+*/
+void Android_LoadingStats( const char *server, const char *map, int maxplayers )
+{
+        jstring jserver, jmap;
+
+        if( !jni.env || !jni.activity || !jni.loadingStats )
+                return;
+
+        jserver = (*jni.env)->NewStringUTF( jni.env, COM_StringEmpty( server ) ? "" : server );
+        if( !jserver )
+                return;
+
+        jmap = (*jni.env)->NewStringUTF( jni.env, COM_StringEmpty( map ) ? "" : map );
+
+        if( !jmap )
+        {
+                (*jni.env)->DeleteLocalRef( jni.env, jserver );
+                return;
+        }
+
+        (*jni.env)->CallVoidMethod( jni.env, jni.activity, jni.loadingStats, jserver, jmap, maxplayers );
+        (*jni.env)->DeleteLocalRef( jni.env, jserver );
+        (*jni.env)->DeleteLocalRef( jni.env, jmap );
 
         if( (*jni.env)->ExceptionCheck( jni.env ))
                 (*jni.env)->ExceptionClear( jni.env );
@@ -213,6 +249,7 @@ void Android_Init( void )
         jni.showMOTD = (*jni.env)->GetMethodID( jni.env, jni.actcls, "showMOTD", "([B[B)Z" );
         jni.loadingShow = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingShow", "(Ljava/lang/String;)V" );
         jni.loadingStatus = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingStatus", "(Ljava/lang/String;F)V" );
+        jni.loadingStats = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingStats", "(Ljava/lang/String;Ljava/lang/String;I)V" );
         jni.loadingBannerFile = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingBannerFile", "(Ljava/lang/String;)V" );
         jni.loadingHide = (*jni.env)->GetMethodID( jni.env, jni.actcls, "loadingHide", "()V" );
         jni.avatarFetch = (*jni.env)->GetMethodID( jni.env, jni.actcls, "avatarFetch", "(J)V" );

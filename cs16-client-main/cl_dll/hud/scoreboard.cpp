@@ -156,10 +156,31 @@ static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
 
 	s_flAvatarNextProbe[slot] = flTime + AVATAR_PROBE_TIME;
 
-	if( g_PlayerInfoList[slot].thisplayer && cl_avatar && cl_avatar->string[0] )
+	if( g_PlayerInfoList[slot].thisplayer && cl_avatar && cl_avatar->string[0]
+		&& stricmp( cl_avatar->string, "(none)" ))
 	{
-		// personal pick from the customize menu wins over the steam one
-		snprintf( path, sizeof( path ), "%s", cl_avatar->string );
+		// personal pick from the customize menu wins over the steam
+		// one. The picker stores the bare file name, so grow the
+		// media/avatars path around it and try the image types the
+		// picker accepts; anything that already looks like a path
+		// (old save, manual set) is used as-is.
+		if( strchr( cl_avatar->string, '/' ) || strchr( cl_avatar->string, '\\' ))
+		{
+			snprintf( path, sizeof( path ), "%s", cl_avatar->string );
+			s_pAvatarModel[slot] = gEngfuncs.LoadMapSprite( path );
+		}
+		else
+		{
+			static const char *exts[] = { "png", "bmp", "tga" };
+			int e;
+
+			for( e = 0; e < 3 && !s_pAvatarModel[slot]; e++ )
+			{
+				snprintf( path, sizeof( path ), "media/avatars/%s.%s",
+					cl_avatar->string, exts[e] );
+				s_pAvatarModel[slot] = gEngfuncs.LoadMapSprite( path );
+			}
+		}
 	}
 	else
 	{
@@ -170,9 +191,8 @@ static struct model_s *Scoreboard_GetAvatar( int slot, float flTime )
 			return NULL;
 
 		snprintf( path, sizeof( path ), "media/avatars/av_%d.png", account );
+		s_pAvatarModel[slot] = gEngfuncs.LoadMapSprite( path );
 	}
-
-	s_pAvatarModel[slot] = gEngfuncs.LoadMapSprite( path );
 
 	return s_pAvatarModel[slot];
 }

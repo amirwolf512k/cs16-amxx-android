@@ -504,18 +504,22 @@ void SCR_BeginLoadingPlaque( qboolean is_background )
 			SCR_UpdateScreen();
 	}
 
+#if XASH_ANDROID
+	// the wait moves into the CS 1.6 style platform window (progress
+	// bar, stats, server banner). This has to sit before the
+	// disconnected check: the very first connect and the first local
+	// map start are still ca_disconnected here, and the early return
+	// below was eating the window exactly when it matters most.
+	// Background map loads stay engine-drawn.
+	if( !is_background )
+		Android_LoadingShow( cls.servername );
+#endif
+
 	if( cls.state == ca_disconnected || cls.disable_screen )
 		return; // already set
 
 	if( cls.key_dest == key_console )
 		return;
-
-#if XASH_ANDROID
-	// the wait moves into the CS 1.6 style platform window (progress
-	// bar, server banner). Background map loads stay engine-drawn.
-	if( !is_background )
-		Android_LoadingShow( cls.servername );
-#endif
 
 	if( is_background ) IN_MouseSavePos( );
 	cls.draw_changelevel = !is_background;

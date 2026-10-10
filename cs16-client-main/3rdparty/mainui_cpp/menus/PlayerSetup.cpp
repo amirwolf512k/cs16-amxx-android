@@ -665,21 +665,16 @@ void CMenuPlayerSetup::_Init( void )
 	}
 
 	avatarsModel.Update();
-	if( avatarsModel.GetRows() <= 1 )
-	{
-		// no avatar files around, don't show an empty picker
-		hideAvatars = true;
-	}
-	else
-	{
-		avatarHint.szName = L( "Avatar image" );
-		avatarHint.colorBase = uiColorHelp;
-		avatarHint.SetRect( 460, btnChooseColor.pos.y + btnChooseColor.size.h + 28, 200, 24 );
+	// always offer the picker: the engine seeds a starter set into
+	// media/avatars on first map load, and an empty "(none)" list
+	// still lets you clear a saved cl_avatar
+	avatarHint.szName = L( "Avatar image" );
+	avatarHint.colorBase = uiColorHelp;
+	avatarHint.SetRect( 460, btnChooseColor.pos.y + btnChooseColor.size.h + 28, 200, 24 );
 
-		avatar.Setup( &avatarsModel );
-		avatar.LinkCvar( "cl_avatar", CMenuEditable::CVAR_STRING );
-		avatar.SetRect( 460, avatarHint.pos.y + avatarHint.size.h + UI_OUTLINE_WIDTH, 200, 32 );
-	}
+	avatar.Setup( &avatarsModel );
+	avatar.LinkCvar( "cl_avatar", CMenuEditable::CVAR_STRING );
+	avatar.SetRect( 460, avatarHint.pos.y + avatarHint.size.h + UI_OUTLINE_WIDTH, 200, 32 );
 
 	AddItem( name );
 	AddItem( voiceEnable );

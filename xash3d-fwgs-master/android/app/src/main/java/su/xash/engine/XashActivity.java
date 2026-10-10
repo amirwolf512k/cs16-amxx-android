@@ -907,6 +907,15 @@ public class XashActivity extends SDLActivity {
         private ImageView mLoadingBanner;
         private String mLoadingServer = "";
 
+        // stats block of the loading window, filled from the goldsrc
+        // serverdata packet once the engine has parsed it
+        private TextView mLoadingStatServer;
+        private TextView mLoadingStatMap;
+        private TextView mLoadingStatPlayers;
+        private String mStatServer = "";
+        private String mStatMap = "";
+        private String mStatMax = "";
+
         /** The segmented yellow progress bar of the classic loading
          *  window: small blocks filling left to right. percent < 0
          *  means "busy, nothing measured yet" and draws it empty. */
@@ -952,6 +961,8 @@ public class XashActivity extends SDLActivity {
         }
 
         public void loadingShow( final String serverAddr ) {
+                seedDefaultAvatars();
+
                 runOnUiThread( new Runnable() {
                         @Override public void run() {
                                 try {
@@ -978,6 +989,44 @@ public class XashActivity extends SDLActivity {
                                 }
                         }
                 });
+        }
+
+        /** server / map / slots for the stats block, the rows the PC
+         *  loading dialog carried. The engine calls it as soon as the
+         *  serverdata packet is parsed; until then we show the dial
+         *  address. */
+        public void loadingStats( final String server, final String map, final int maxPlayers ) {
+                runOnUiThread( new Runnable() {
+                        @Override public void run() {
+                                try {
+                                        if( server != null && server.length() > 0 ) mStatServer = server;
+                                        if( map != null && map.length() > 0 ) mStatMap = map;
+                                        if( maxPlayers > 0 ) mStatMax = "?/" + maxPlayers;
+
+                                        if( mLoadingOverlay == null ) return;
+
+                                        if( mLoadingStatServer != null && mStatServer.length() > 0 )
+                                                mLoadingStatServer.setText( "Server: " + mStatServer );
+                                        if( mLoadingStatMap != null && mStatMap.length() > 0 )
+                                                mLoadingStatMap.setText( "Map: " + mStatMap );
+                                        if( mLoadingStatPlayers != null && mStatMax.length() > 0 )
+                                                mLoadingStatPlayers.setText( "Players: " + mStatMax );
+                                } catch( Throwable t ) {
+                                        Log.w( TAG, "loadingStats failed", t );
+                                }
+                        }
+                });
+        }
+
+        /** one stats row in the loading window, PC dialog style */
+        private TextView addStatRow( LinearLayout parent, String text ) {
+                TextView row = new TextView( this );
+                row.setText( text );
+                row.setTextColor( LOADING_TEXT );
+                row.setTextSize( TypedValue.COMPLEX_UNIT_SP, 12 );
+                parent.addView( row, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
+                return row;
         }
 
         /** The director banner (DRC_CMD_BANNER): a game-relative path to
@@ -1226,6 +1275,70 @@ public class XashActivity extends SDLActivity {
                 }
         }
 
+        /** first run: drop a small set of starter badges into
+         *  media/avatars so the customize picker always has something
+         *  to offer and cl_avatar has a real file to point at. Anything
+         *  the user drops in that folder later simply joins the list. */
+        private void seedDefaultAvatars() {
+                Thread t = new Thread( new Runnable() {
+                        @Override public void run() {
+                                try {
+                                        File dir = avatarDir();
+                                        if( dir == null ) return;
+
+                                        File[] have = dir.listFiles();
+                                        if( have != null ) {
+                                                for( File f : have ) {
+                                                        String n = f.getName().toLowerCase( java.util.Locale.US );
+                                                        if( n.endsWith( ".png" ) || n.endsWith( ".bmp" ))
+                                                                return;
+                                                }
+                                        }
+
+                                        String[] labels = { "CS", "16", "VIP", "PRO", "ACE", "TOP", "GG", "ZM" };
+                                        int[] colors = {
+                                                0xFF3D4A2A, 0xFF7A5C1E, 0xFF274435, 0xFF5A2A2A,
+                                                0xFF2A3A5A, 0xFF4A2A5A, 0xFF5A4520, 0xFF30494B
+                                        };
+
+                                        for( int i = 0; i < labels.length; i++ ) {
+                                                Bitmap bmp = Bitmap.createBitmap( 128, 128, Bitmap.Config.ARGB_8888 );
+                                                android.graphics.Canvas cv = new android.graphics.Canvas( bmp );
+                                                Paint p = new Paint( Paint.ANTI_ALIAS_FLAG );
+                                                android.graphics.RectF box = new android.graphics.RectF( 4, 4, 124, 124 );
+
+                                                p.setColor( colors[i] );
+                                                cv.drawRoundRect( box, 22, 22, p );
+
+                                                p.setColor( 0xFFE8E2D0 );
+                                                p.setStrokeWidth( 4 );
+                                                p.setStyle( Paint.Style.STROKE );
+                                                cv.drawRoundRect( box, 22, 22, p );
+
+                                                p.setStyle( Paint.Style.FILL );
+                                                p.setTextAlign( Paint.Align.CENTER );
+                                                p.setTextSize( 50 );
+                                                p.setFakeBoldText( true );
+                                                Paint.FontMetrics fm = p.getFontMetrics();
+                                                cv.drawText( labels[i], 64, 64 - ( fm.ascent + fm.descent ) / 2, p );
+
+                                                java.io.FileOutputStream fos = new java.io.FileOutputStream(
+                                                        new File( dir, "logo_" + labels[i].toLowerCase( java.util.Locale.US ) + ".png" ));
+                                                bmp.compress( Bitmap.CompressFormat.PNG, 90, fos );
+                                                fos.close();
+                                                bmp.recycle();
+                                        }
+
+                                        consolePrintf( "Avatar: seeded the starter set into media/avatars" );
+                                } catch( Throwable t ) {
+                                        Log.w( TAG, "avatar seed failed", t );
+                                }
+                        }
+                });
+                t.setDaemon( true );
+                t.start();
+        }
+
         private String httpGetString( String url ) {
                 byte[] data = httpGetBytes( url );
                 if( data == null ) return null;
@@ -1305,6 +1418,12 @@ public class XashActivity extends SDLActivity {
 
                 mLoadingServer = serverAddr != null ? serverAddr : "";
 
+                // fresh window, fresh stats: the engine refills these
+                // from the new serverdata a moment later
+                mStatServer = "";
+                mStatMap = "";
+                mStatMax = "";
+
                 DisplayMetrics dm = getResources().getDisplayMetrics();
                 int screenW = dm.widthPixels;
 
@@ -1344,6 +1463,22 @@ public class XashActivity extends SDLActivity {
 
                 panel.addView( titleRow, new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT ));
+
+                // stats block, the same rows the PC loading dialog showed
+                LinearLayout stats = new LinearLayout( this );
+                stats.setOrientation( LinearLayout.VERTICAL );
+
+                mLoadingStatServer = addStatRow( stats, "Server: " +
+                        ( mStatServer.length() > 0 ? mStatServer : mLoadingServer ));
+                mLoadingStatMap = addStatRow( stats, "Map: " +
+                        ( mStatMap.length() > 0 ? mStatMap : "-" ));
+                mLoadingStatPlayers = addStatRow( stats, "Players: " +
+                        ( mStatMax.length() > 0 ? mStatMax : "-" ));
+
+                LinearLayout.LayoutParams statsLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
+                statsLp.topMargin = dp( 10 );
+                panel.addView( stats, statsLp );
 
                 LoadingBar bar = new LoadingBar( this );
                 LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
@@ -1402,6 +1537,16 @@ public class XashActivity extends SDLActivity {
                 panel.addView( cancelRow, cancelLp );
 
                 mLoadingOverlay = overlay;
+
+                // tap the dark area to collapse/expand the panel
+                overlay.setOnClickListener( new View.OnClickListener() {
+                        @Override public void onClick( View v ) {
+                                boolean show = panel.getVisibility() != View.VISIBLE;
+                                panel.setVisibility( show ? View.VISIBLE : View.GONE );
+                        }
+                });
+                panel.setClickable( true );
+
                 addContentView( overlay, new ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT ));
         }
