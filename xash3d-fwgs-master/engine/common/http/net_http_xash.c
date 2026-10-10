@@ -136,6 +136,10 @@ typedef struct httpfile_s
 	int size;
 	int reported_size;
 	int downloaded;
+	int counted_bytes; // bytes already folded into the loading window session counter
+	int session_size; // the size this file contributed to the loading session budget
+	qboolean session_counted;
+	qboolean session_adjusted;
 	int lastchecksize;
 	float checktime;
 	float blocktime;
@@ -179,6 +183,8 @@ static struct http_static_s
 	int active_count, progress_count;
 	float progress;
 	qboolean resolving;
+	int64_t dl_bytes_total; // byte budget of the running load, grows as sizes become known
+	int64_t dl_bytes_done; // bytes received against that budget, never shrinks but for retries
 } http;
 
 poolhandle_t http_mempool;
@@ -1118,6 +1124,21 @@ static int HTTP_FileProcessStream( httpfile_t *curfile )
 
 					curfile->size = size;
 					curfile->header_size = 0;
+
+					// the queue-time size comes from a signed 24-bit field and
+					// wraps for files over 8 mb, the header knows better
+					if( !curfile->session_counted )
+					{
+						curfile->session_counted = true;
+						curfile->session_size = size;
+						http.dl_bytes_total += size;
+					}
+					else if( !curfile->session_adjusted && curfile->session_size != size )
+					{
+						curfile->session_adjusted = true;
+						http.dl_bytes_total += size - curfile->session_size;
+						curfile->session_size = size;
+					}
 				}
 
 				if( curfile->size == -1 && !curfile->chunked )
@@ -1255,6 +1276,8 @@ Call every frame
 void HTTP_Run( void )
 {
 	const char *activefile = NULL;
+	httpfile_t *active = NULL, *pending = NULL;
+	qboolean queue_busy = false;
 
 	http.resolving = false;
 	http.progress_count = 0;
@@ -1267,8 +1290,29 @@ void HTTP_Run( void )
 		while( move_next > 0 )
 			move_next = curfile->pfn_process( curfile );
 
-		if( !activefile && curfile->size > 0 && curfile->downloaded < curfile->size )
-			activefile = curfile->to_memory ? curfile->url : curfile->path;
+		// fold the bytes received since the last frame into the
+		// session counter: finished files leave the list within
+		// this very frame, without this their share would vanish
+		// from the loading window counters
+		if( !curfile->to_memory && curfile->downloaded > curfile->counted_bytes )
+		{
+			http.dl_bytes_done += curfile->downloaded - curfile->counted_bytes;
+			curfile->counted_bytes = curfile->downloaded;
+		}
+
+		if( curfile->pfn_process != HTTP_FileFree && !curfile->to_memory )
+			queue_busy = true;
+
+		// prefer a transfer that already knows its size; fall back
+		// to the first one still in flight so the window names the
+		// file even while its header or connection is pending
+		if( !curfile->to_memory && !curfile->success && !active )
+		{
+			if( curfile->size > 0 && curfile->downloaded < curfile->size )
+				active = curfile;
+			else if( !pending )
+				pending = curfile;
+		}
 
 		if( curfile->blocktime > http_timeout.value )
 		{
@@ -1277,6 +1321,12 @@ void HTTP_Run( void )
 			HTTP_FreeFile( curfile, true );
 		}
 	}
+
+	if( !active )
+		active = pending;
+
+	if( active )
+		activefile = active->to_memory ? active->url : active->path;
 
 	// update progress
 	if( !Host_IsDedicated() && http.progress_count != 0 )
@@ -1287,15 +1337,16 @@ void HTTP_Run( void )
 	// loading window elements from here: the overall bar through
 	// CL_LoadingDownloadProgress and the download block (second
 	// yellow bar, file name, time and byte counters) directly
-	if( activefile && http.progress_count != 0 )
+	if( active )
 	{
 		static char lastname[MAX_SYSPATH];
 		static float lastpercent = -2.0f;
 		static int64_t lastbytes;
 		static double lasttime;
 		static float kbps;
-		float percent = http.progress / http.progress_count * 100.0f;
-		int64_t dl_done = 0, dl_total = 0;
+		float percent = http.progress_count > 0 ?
+			http.progress / http.progress_count * 100.0f : 0.0f;
+		int64_t dl_done = http.dl_bytes_done, dl_total = http.dl_bytes_total;
 		int dl_left = 0;
 		const char *p;
 		qboolean printable = true;
@@ -1312,22 +1363,20 @@ void HTTP_Run( void )
 
 		if( printable )
 		{
-			// byte totals over the queued transfers: finished
-			// files carry their full size so the fraction only
-			// moves when a new unknown-size file starts
+			// size corrections from the response headers race
+			// the byte counter, keep the fraction sane
+			if( dl_total < dl_done )
+				dl_total = dl_done;
+
+			// files still queued or on the wire, game downloads
+			// only - the in-memory fetches the engine does for
+			// itself must not inflate the remaining count
 			for( httpfile_t *sum = http.first_file; sum; sum = sum->next )
 			{
-				if( sum->size <= 0 )
-				{
-					if( !sum->success )
-						dl_left++; // queued, size unknown yet
+				if( sum->to_memory || sum->success )
 					continue;
-				}
 
-				dl_total += sum->size;
-				dl_done += bound( 0, sum->downloaded, sum->size );
-
-				if( sum->downloaded < sum->size )
+				if( sum->size <= 0 || sum->downloaded < sum->size )
 					dl_left++;
 			}
 
@@ -1368,9 +1417,14 @@ void HTTP_Run( void )
 			if( dl_total > 0 )
 			{
 				char status[MAX_SYSPATH], footer[MAX_SYSPATH];
-				float frac = ( float )dl_done / ( float )dl_total * 100.0f;
+				float frac = bound( 0.0f, ( float )dl_done / ( float )dl_total, 1.0f );
 
-				if( kbps > 512.0f )
+				// the request is out but the server has not
+				// answered yet: say so instead of a frozen
+				// "downloading..." that reads like a hang
+				if( !active->got_response )
+					Q_strncpy( status, "connecting...", sizeof( status ));
+				else if( kbps > 512.0f )
 				{
 					int seconds = ( int )(( dl_total - dl_done ) / kbps );
 
@@ -1390,10 +1444,34 @@ void HTTP_Run( void )
 			else CL_LoadingDownloadFile( activefile, percent / 100.0f, NULL, NULL );
 		}
 	}
-	else CL_LoadingDownloadFile( NULL, 0.0f, NULL, NULL );
+	else if( !queue_busy ) CL_LoadingDownloadFile( NULL, 0.0f, NULL, NULL );
 #endif // XASH_ANDROID
 
 	HTTP_AutoClean();
+}
+
+/*
+===================
+HTTP_LoadingResetTotals
+
+start a fresh byte budget for the loading window: the client calls
+it when a new load begins, before the resource list turns into
+download requests
+===================
+*/
+void HTTP_LoadingResetTotals( void )
+{
+	http.dl_bytes_total = http.dl_bytes_done = 0;
+
+	// transfers still in flight must not leak their counters into
+	// the new session
+	for( httpfile_t *file = http.first_file; file; file = file->next )
+	{
+		file->counted_bytes = 0;
+		file->session_size = 0;
+		file->session_counted = false;
+		file->session_adjusted = false;
+	}
 }
 
 /*
@@ -1436,6 +1514,16 @@ void HTTP_AddDownload( const char *path, int size, qboolean process, resource_t 
 	httpfile->pfn_process = HTTP_FileQueue;
 	httpfile->server = http.first_server;
 	httpfile->process = process;
+
+	// the resource list usually carries the file size; fold it into
+	// the session budget right away so the window shows a real total
+	// before the first response header lands
+	if( size > 0 )
+	{
+		httpfile->session_counted = true;
+		httpfile->session_size = size;
+		http.dl_bytes_total += size;
+	}
 
 	httpfile->next = http.first_file;
 	http.first_file = httpfile;
@@ -1647,6 +1735,16 @@ static qboolean HTTP_FileRedirect( httpfile_t *file, const char *location )
 	file->mem_size = 0;
 	file->downloaded = 0;
 	file->lastchecksize = 0;
+
+	if( file->counted_bytes > 0 )
+	{
+		// the transfer restarts from zero, drop the bytes already
+		// counted or the session would grow a phantom copy
+		http.dl_bytes_done -= file->counted_bytes;
+		if( http.dl_bytes_done < 0 )
+			http.dl_bytes_done = 0;
+		file->counted_bytes = 0;
+	}
 	file->header_size = 0;
 	file->bytes_sent = 0;
 	file->got_response = false;

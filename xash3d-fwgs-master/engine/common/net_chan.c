@@ -1506,7 +1506,9 @@ void Netchan_UpdateProgress( netchan_t *chan )
 			else if( lastcount == 0 && lastpercent >= 0.0f )
 			{
 				CL_LoadingDownloadProgress( NULL, lastpercent / 100.0f );
-				CL_LoadingDownloadFile( NULL, 0.0f, NULL, NULL );
+				// release the overall bar only; the download block itself is
+				// http's to fold - hiding it here fought the http feeder every
+				// frame the transfer percent moved and flickered it away
 			}
 		}
 	}

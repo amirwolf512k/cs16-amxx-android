@@ -910,6 +910,13 @@ public class XashActivity extends SDLActivity {
         private ImageView mLoadingBanner;
         private String mLoadingServer = "";
 
+        // the rows the Cancel button rides between: beside the main
+        // bar while nothing transfers, beside the transfer bar while
+        // one does - the pc dialog moves it the same way
+        private LinearLayout mLoadingBarRow;
+        private LinearLayout mLoadingDlRow;
+        private Button mLoadingCancel;
+
         // the download block of the classic dialog: the file the server
         // is sending, its own bar and the counter lines around it,
         // visible only while a transfer actually runs
@@ -1004,6 +1011,23 @@ public class XashActivity extends SDLActivity {
                 });
         }
 
+        /** the Cancel button rides beside whichever bar is the last
+         *  visible one: next to the main bar while nothing downloads,
+         *  next to the transfer bar while one runs - the pc dialog
+         *  moves it between the rows the same way */
+        private void moveLoadingCancel( LinearLayout row ) {
+                if( mLoadingCancel == null || row == null ) return;
+                if( mLoadingCancel.getParent() == row ) return;
+
+                if( mLoadingCancel.getParent() instanceof ViewGroup )
+                        (( ViewGroup )mLoadingCancel.getParent()).removeView( mLoadingCancel );
+
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, dp( 26 ));
+                lp.leftMargin = dp( 8 );
+                row.addView( mLoadingCancel, lp );
+        }
+
         /** the second bar of the classic loading dialog: the engine
          *  calls it while a transfer runs with the file name, that
          *  file's fill (0..100) and the counter lines around it. a
@@ -1023,6 +1047,9 @@ public class XashActivity extends SDLActivity {
                                                         mLoadingDlBar.setVisibility( View.GONE );
                                                 if( mLoadingDlFooter != null )
                                                         mLoadingDlFooter.setVisibility( View.GONE );
+                                                if( mLoadingDlRow != null )
+                                                        mLoadingDlRow.setVisibility( View.GONE );
+                                                moveLoadingCancel( mLoadingBarRow );
                                                 return;
                                         }
 
@@ -1043,6 +1070,13 @@ public class XashActivity extends SDLActivity {
                                         if( mLoadingDlBar != null ) {
                                                 mLoadingDlBar.setVisibility( View.VISIBLE );
                                                 mLoadingDlBar.setPercent( percent );
+                                        }
+
+                                        // transfer running: the Cancel moves
+                                        // beside the transfer bar
+                                        if( mLoadingDlRow != null ) {
+                                                mLoadingDlRow.setVisibility( View.VISIBLE );
+                                                moveLoadingCancel( mLoadingDlRow );
                                         }
 
                                         if( mLoadingDlFooter != null ) {
@@ -1555,6 +1589,31 @@ public class XashActivity extends SDLActivity {
                 dialog.addView( barRow, barRowLp );
                 mLoadingBar = bar;
                 mLoadingPct = pct;
+                mLoadingBarRow = barRow;
+
+                // Cancel lives on this row while nothing transfers,
+                // exactly where the classic window keeps it
+                Button cancel = new Button( this );
+                cancel.setText( "Cancel" );
+                cancel.setAllCaps( false );
+                cancel.setTextColor( LOADING_TITLE );
+                cancel.setTextSize( TypedValue.COMPLEX_UNIT_SP, 13 );
+                cancel.setBackground( makeLoadingButtonBackground() );
+                cancel.setStateListAnimator( null );
+                cancel.setElevation( 0f );
+                cancel.setMinHeight( 0 );
+                cancel.setPadding( dp( 10 ), 0, dp( 10 ), 0 );
+                cancel.setOnClickListener( new View.OnClickListener() {
+                        @Override public void onClick( View v ) {
+                                hideLoadingOverlay();
+                                nativeLoadingCancelled();
+                        }
+                });
+                LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT, dp( 26 ));
+                cancelLp.leftMargin = dp( 8 );
+                barRow.addView( cancel, cancelLp );
+                mLoadingCancel = cancel;
 
                 // ---- the download block: the file being transferred,
                 // its status and the second yellow bar with the Cancel
@@ -1586,40 +1645,22 @@ public class XashActivity extends SDLActivity {
 
                 LinearLayout dlRow = new LinearLayout( this );
                 dlRow.setGravity( Gravity.CENTER_VERTICAL );
+                dlRow.setVisibility( View.GONE );
 
                 LoadingBar dlBar = new LoadingBar( this );
-                dlBar.setVisibility( View.GONE );
                 dlRow.addView( dlBar, new LinearLayout.LayoutParams(
                         0, dp( 16 ), 1f ));
                 mLoadingDlBar = dlBar;
 
-                // Cancel sits beside the download bar on the same row,
-                // never below the dialog box
-                Button cancel = new Button( this );
-                cancel.setText( "Cancel" );
-                cancel.setAllCaps( false );
-                cancel.setTextColor( LOADING_TITLE );
-                cancel.setTextSize( TypedValue.COMPLEX_UNIT_SP, 13 );
-                cancel.setBackground( makeLoadingButtonBackground() );
-                cancel.setStateListAnimator( null );
-                cancel.setElevation( 0f );
-                cancel.setMinHeight( 0 );
-                cancel.setPadding( dp( 10 ), 0, dp( 10 ), 0 );
-                cancel.setOnClickListener( new View.OnClickListener() {
-                        @Override public void onClick( View v ) {
-                                hideLoadingOverlay();
-                                nativeLoadingCancelled();
-                        }
-                });
-                LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT, dp( 26 ));
-                cancelLp.leftMargin = dp( 8 );
-                dlRow.addView( cancel, cancelLp );
+                // when a transfer runs, the Cancel button moves from
+                // the bar row down here, beside the transfer bar -
+                // ref1 of the pc dialog shows it on the same row
 
                 LinearLayout.LayoutParams dlRowLp = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT );
                 dlRowLp.topMargin = dp( 8 );
                 dialog.addView( dlRow, dlRowLp );
+                mLoadingDlRow = dlRow;
 
                 TextView dlFooter = new TextView( this );
                 dlFooter.setTextColor( LOADING_TEXT );
@@ -1668,6 +1709,9 @@ public class XashActivity extends SDLActivity {
                 mLoadingDlBar = null;
                 mLoadingDlFooter = null;
                 mLoadingBanner = null;
+                mLoadingBarRow = null;
+                mLoadingDlRow = null;
+                mLoadingCancel = null;
 
                 try {
                         ViewGroup parent = ( ViewGroup )overlay.getParent();

@@ -1464,6 +1464,9 @@ void CL_LoadingReset( void )
 	cl_loading_lastdl = 0.0;
 	cl_loading_lastpush = 0.0;
 	CL_LoadingDownloadHide();
+
+	// fresh byte budget for the http session counters
+	HTTP_LoadingResetTotals();
 }
 
 void CL_LoadingResourceList( int total )
