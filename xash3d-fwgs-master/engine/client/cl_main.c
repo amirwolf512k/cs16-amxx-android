@@ -1637,18 +1637,27 @@ client drew it under the loading bar. answer the same commands, but
 the target is pinned to resource/*.res so nothing else on disk is
 reachable through them.
 
-two shapes exist in the wild: the one-line one (motdfile names the
-target, motd_write carries the whole template on its own line) and
-the multi-line one (motd_write "resource/<name>.res" followed by
-the template lines inside the same stufftext). the multi-line shape
-never survives the command buffer - its body would run as console
-commands line by line - so CL_BannerStuffText catches it while the
-stufftext is still raw and writes the file straight away.
+the plugins never send the template in one clean piece. the usual
+shape stuffs the target path and the whole template behind one
+motd_write, and whatever arrives after it comes down as bare
+console lines that the stock client would run - and forward to the
+server - line by line. so the template is collected across
+everything that shows up, motd_write payloads and bare .res lines
+alike, until the outer brace closes, and only then the file is
+written.
 =======================
 */
-static char cl_motd_target[MAX_QPATH];
-static qboolean cl_motd_fresh;
-static char cl_motd_lastsrc[MAX_QPATH];
+#define CL_MOTD_MAXTEMPLATE 65536
+#define CL_MOTD_IDLETIME 20.0
+
+static char	cl_motd_target[MAX_QPATH];
+static char	cl_motd_accum[CL_MOTD_MAXTEMPLATE];
+static size_t	cl_motd_accumlen;
+static qboolean	cl_motd_collecting;
+static int	cl_motd_depth;
+static qboolean	cl_motd_inquote;
+static qboolean	cl_motd_opened;
+static double	cl_motd_lastgrew;
 
 /*
 =======================
@@ -1677,72 +1686,72 @@ static qboolean CL_MotdTargetPath( const char *name, char *out, size_t outsize )
 	return true;
 }
 
-static void CL_Motdfile_f( void )
+/*
+=======================
+CL_MotdResetBody
+
+forget the half-collected body but keep collecting on the same
+target; used between templates and after a drop.
+=======================
+*/
+static void CL_MotdResetBody( void )
 {
-	const char *name = Cmd_Argv( 1 );
-
-	cl_motd_target[0] = 0;
-	cl_motd_fresh = false;
-
-	if( Cmd_Argc() != 2 )
-	{
-		Con_Printf( S_USAGE "motdfile <name>\n" );
-		return;
-	}
-
-	if( !CL_MotdTargetPath( name, cl_motd_target, sizeof( cl_motd_target )))
-	{
-		Con_Printf( "motdfile: refusing \"%s\"\n", name );
-		return;
-	}
-
-	cl_motd_fresh = true;
+	cl_motd_accum[0] = 0;
+	cl_motd_accumlen = 0;
+	cl_motd_depth = 0;
+	cl_motd_inquote = false;
+	cl_motd_opened = false;
 }
 
-static void CL_MotdWrite_f( void )
+/*
+=======================
+CL_MotdBeginTemplate
+
+a new template is on its way: remember where it goes and drop
+whatever the previous attempt left behind.
+=======================
+*/
+static void CL_MotdBeginTemplate( const char *path )
 {
-	file_t *f;
-	char probe[MAX_QPATH];
-	int len;
+	Q_strncpy( cl_motd_target, path, sizeof( cl_motd_target ));
+	CL_MotdResetBody();
+	cl_motd_collecting = true;
+	cl_motd_lastgrew = host.realtime;
+	Con_DPrintf( "motd_write: collecting %s\n", path );
+}
 
-	if( Cmd_Argc() < 2 )
-	{
-		Con_Printf( S_USAGE "motd_write <text>\n" );
-		return;
-	}
+/*
+=======================
+CL_MotdDropTemplate
 
-	// a multi-line template that lost pieces on the way ends here
-	// with the target path as its argument; refuse to turn that
-	// into a file
-	if( CL_MotdTargetPath( Cmd_Argv( 1 ), probe, sizeof( probe )))
-	{
-		Con_Printf( S_ERROR "motd_write: template arrived incomplete, banner skipped\n" );
-		return;
-	}
+give up on a half-collected template and hand the console back.
+heard only when a real body was on the way, so an aborted
+motdfile with nothing behind it stays quiet.
+=======================
+*/
+static void CL_MotdDropTemplate( const char *reason )
+{
+	if( cl_motd_accumlen > 0 )
+		Con_Printf( S_ERROR "motd_write: %s\n", reason );
 
-	if( COM_StringEmpty( cl_motd_target ))
-	{
-		// our motdfile command can lose its name to a cvar another
-		// module registered first; the server then sets that cvar
-		// and the target comes from there. a changed value means a
-		// fresh sequence from the server, an unchanged one is the
-		// plugin writing its template line by line
-		convar_t *mf = Cvar_FindVar( "motdfile" );
+	cl_motd_collecting = false;
+	CL_MotdResetBody();
+}
 
-		if( !mf || !CL_MotdTargetPath( mf->string, cl_motd_target, sizeof( cl_motd_target )))
-		{
-			// visible on purpose: a banner server whose sequence broke
-			// is undiagnosable from the client console otherwise
-			Con_Printf( "motd_write: no target file, the server must send motdfile first\n" );
-			return;
-		}
+/*
+=======================
+CL_MotdWriteTemplate
 
-		if( Q_strcmp( cl_motd_lastsrc, mf->string ))
-			cl_motd_fresh = true;
-		Q_strncpy( cl_motd_lastsrc, mf->string, sizeof( cl_motd_lastsrc ));
-	}
+the collected body is a full template - write it over the old one
+in the game dir, where the android loading screen reads it from.
+=======================
+*/
+static void CL_MotdWriteTemplate( void )
+{
+	file_t	*f;
+	fs_offset_t	len;
 
-	f = FS_Open( cl_motd_target, cl_motd_fresh ? "w" : "a", true );
+	f = FS_Open( cl_motd_target, "w", true );
 
 	if( !f )
 	{
@@ -1750,14 +1759,205 @@ static void CL_MotdWrite_f( void )
 		return;
 	}
 
-	len = FS_Printf( f, "%s\n", Cmd_Args() );
+	len = FS_Write( f, cl_motd_accum, cl_motd_accumlen );
 	FS_Close( f );
-	cl_motd_fresh = false;
 
 	if( len > 0 )
-		Con_Printf( "motd_write: wrote %i bytes to %s\n", len, cl_motd_target );
+		Con_Printf( "motd_write: wrote %i bytes to %s\n", (int)len, cl_motd_target );
 	else
 		Con_Printf( S_ERROR "motd_write: wrote nothing to %s\n", cl_motd_target );
+}
+
+/*
+=======================
+CL_MotdFeedTemplate
+
+append one more piece of the template and watch the braces: the
+moment the outer brace closes the file is written and whatever the
+plugin put after the template goes back to the command buffer. the
+quote and brace state is carried between pieces because the plugin
+may split the template anywhere on the way.
+=======================
+*/
+static void CL_MotdFeedTemplate( const char *piece )
+{
+	const char	*p, *close = NULL;
+	size_t		keep;
+
+	if( !cl_motd_collecting )
+		return;
+
+	for( p = piece; *p; p++ )
+	{
+		if( cl_motd_inquote )
+		{
+			if( *p == '"' )
+				cl_motd_inquote = false;
+			continue;
+		}
+
+		if( *p == '"' )
+		{
+			cl_motd_inquote = true;
+		}
+		else if( *p == '{' )
+		{
+			cl_motd_depth++;
+			cl_motd_opened = true;
+		}
+		else if( *p == '}' )
+		{
+			cl_motd_depth--;
+
+			if( cl_motd_opened && cl_motd_depth <= 0 )
+			{
+				close = p + 1;
+				break;
+			}
+		}
+	}
+
+	keep = close ? ( size_t )( close - piece ) : Q_strlen( piece );
+
+	if( cl_motd_accumlen + keep + 2 >= sizeof( cl_motd_accum ))
+	{
+		CL_MotdDropTemplate( "template too big, banner skipped" );
+		return;
+	}
+
+	memcpy( cl_motd_accum + cl_motd_accumlen, piece, keep );
+	cl_motd_accumlen += keep;
+	cl_motd_accum[cl_motd_accumlen++] = '\n';
+	cl_motd_accum[cl_motd_accumlen] = 0;
+	cl_motd_lastgrew = host.realtime;
+
+	if( !close )
+		return;
+
+	// a whole template is on disk now; the next write starts fresh
+	CL_MotdWriteTemplate();
+	cl_motd_collecting = false;
+	CL_MotdResetBody();
+
+	// anything the plugin appended after the template still
+	// belongs to the command buffer
+	while( *close == '\n' || *close == '\r' )
+		close++;
+
+	if( *close )
+	{
+		Cbuf_AddFilteredText( close );
+		Cbuf_AddFilteredText( "\n" );
+	}
+}
+
+/*
+=======================
+CL_MotdCaptureLine
+
+the console hook for a template in flight: the bare .res lines a
+plugin stuffs between the motd_write pieces are file content, not
+commands - the stock client would run them and forward every
+single line to the server. only lines that look like template
+content are swallowed, so real console traffic is untouched, and
+a template that stopped arriving releases the console again.
+=======================
+*/
+qboolean CL_MotdCaptureLine( const char *line )
+{
+	const char	*p = line;
+	double		idle;
+
+	if( !cl_motd_collecting )
+		return false;
+
+	idle = host.realtime - cl_motd_lastgrew;
+
+	if(( cl_motd_accumlen > 0 && idle > CL_MOTD_IDLETIME ) ||
+		( cl_motd_accumlen == 0 && idle > 60.0 ))
+	{
+		CL_MotdDropTemplate( "template never completed, banner skipped" );
+		return false;
+	}
+
+	while( *p == ' ' || *p == '\t' )
+		p++;
+
+	// vgui template lines start with a quoted key or a brace;
+	// anything else is a genuine console command
+	if( *p != '"' && *p != '{' && *p != '}' )
+		return false;
+
+	CL_MotdFeedTemplate( p );
+	return true;
+}
+
+static void CL_Motdfile_f( void )
+{
+	char	probe[MAX_QPATH];
+
+	if( Cmd_Argc() != 2 )
+	{
+		Con_Printf( S_USAGE "motdfile <name>\n" );
+		return;
+	}
+
+	if( !CL_MotdTargetPath( Cmd_Argv( 1 ), probe, sizeof( probe )))
+	{
+		Con_Printf( "motdfile: refusing \"%s\"\n", Cmd_Argv( 1 ));
+		return;
+	}
+
+	CL_MotdBeginTemplate( probe );
+}
+
+static void CL_MotdWrite_f( void )
+{
+	char	probe[MAX_QPATH];
+
+	if( Cmd_Argc() < 2 )
+	{
+		Con_Printf( S_USAGE "motd_write <text>\n" );
+		return;
+	}
+
+	// the multi-line shape: the template header (a bare .res
+	// path) rides behind the command itself and the body follows
+	// on the next lines of the same stufftext
+	if( CL_MotdTargetPath( Cmd_Argv( 1 ), probe, sizeof( probe )))
+	{
+		CL_MotdBeginTemplate( probe );
+		CL_MotdFeedTemplate( Cmd_Args() );
+		return;
+	}
+
+	// no target yet: the motdfile command can lose its name to a
+	// cvar another module registered first, then the server sets
+	// that cvar and the target comes from there
+	if( COM_StringEmpty( cl_motd_target ) && !cl_motd_collecting )
+	{
+		convar_t *mf = Cvar_FindVar( "motdfile" );
+
+		if( !mf || !CL_MotdTargetPath( mf->string, probe, sizeof( probe )))
+		{
+			// visible on purpose: a banner server whose sequence
+			// broke is undiagnosable from the client console otherwise
+			Con_Printf( "motd_write: no target file, the server must send motdfile first\n" );
+			return;
+		}
+
+		CL_MotdBeginTemplate( probe );
+	}
+
+	if( !cl_motd_collecting )
+	{
+		// the previous template finished long ago; the server is
+		// writing another one on the same target
+		CL_MotdBeginTemplate( cl_motd_target );
+	}
+
+	// one line of a template the plugin sends line by line
+	CL_MotdFeedTemplate( Cmd_Args() );
 }
 
 /*
@@ -1768,18 +1968,17 @@ the multi-line banner shape: the plugin stuffs
 motd_write "resource/<name>.res" and the whole template as the
 lines after it in ONE stufftext. caught here so the body never
 reaches the command buffer (the console would run every line of
-the template as a command); the file is written straight away and
-the picture shows on the next loading screen. returns true when
-the stufftext was a banner template and is handled.
+the template as a command); the body goes into the collector and
+the file is written the moment the outer brace closes - either
+still inside this stufftext or from the bare lines that follow.
+returns true when the stufftext was a banner template and is
+handled.
 =======================
 */
 qboolean CL_BannerStuffText( const char *text )
 {
-	const char	*p, *body, *end;
-	file_t		*f;
+	const char	*p, *body;
 	char		target[MAX_QPATH], path[MAX_QPATH];
-	int		len, depth;
-	qboolean	inquote, opened;
 
 	p = text;
 	while( *p == ' ' || *p == '\t' )
@@ -1801,7 +2000,7 @@ qboolean CL_BannerStuffText( const char *text )
 
 		if( !q )
 			return false;
-		if( q - ( p + 1 ) >= sizeof( target ))
+		if( q - ( p + 1 ) >= ( ptrdiff_t )sizeof( target ))
 			return false;
 
 		memcpy( target, p + 1, q - ( p + 1 ));
@@ -1814,62 +2013,12 @@ qboolean CL_BannerStuffText( const char *text )
 
 		while( *q && *q != ' ' && *q != '\t' && *q != '\n' )
 			q++;
-		if( q == p || q - p >= sizeof( target ))
+		if( q == p || q - p >= ( ptrdiff_t )sizeof( target ))
 			return false;
 
 		memcpy( target, p, q - p );
 		target[q - p] = 0;
 		p = q;
-	}
-
-	// the template starts on the line after the command
-	body = strchr( p, '\n' );
-	if( !body )
-	{
-		Con_Printf( "motd_write: no template body in the stufftext\n" );
-		return true;
-	}
-	body++;
-
-	// the template ends where its outer brace closes; braces
-	// inside quoted strings do not count
-	depth = 0;
-	inquote = opened = false;
-	end = NULL;
-
-	for( p = body; *p; p++ )
-	{
-		if( inquote )
-		{
-			if( *p == '"' )
-				inquote = false;
-			continue;
-		}
-		if( *p == '"' )
-		{
-			inquote = true;
-			continue;
-		}
-		if( *p == '{' )
-		{
-			depth++;
-			opened = true;
-		}
-		else if( *p == '}' )
-		{
-			depth--;
-			if( opened && depth <= 0 )
-			{
-				end = p + 1;
-				break;
-			}
-		}
-	}
-
-	if( !end )
-	{
-		Con_Printf( S_ERROR "motd_write: template arrived incomplete, banner skipped\n" );
-		return false;
 	}
 
 	if( !CL_MotdTargetPath( target, path, sizeof( path )))
@@ -1878,28 +2027,18 @@ qboolean CL_BannerStuffText( const char *text )
 		return true;
 	}
 
-	// rewritten whole on every connect: the plugin expects the
-	// template to replace whatever a previous server wrote
-	f = FS_Open( path, "w", true );
+	// the template starts on the line after the command
+	body = strchr( p, '\n' );
 
-	if( !f )
+	if( !body )
 	{
-		Con_Printf( S_ERROR "motd_write: cannot write %s\n", path );
+		// header only - the body follows as bare console lines
+		CL_MotdBeginTemplate( path );
 		return true;
 	}
 
-	len = FS_Write( f, body, end - body );
-	FS_Close( f );
-
-	if( len > 0 )
-		Con_Printf( "motd_write: wrote %i bytes to %s\n", len, path );
-	else
-		Con_Printf( S_ERROR "motd_write: wrote nothing to %s\n", path );
-
-	// anything the plugin appended after the template still
-	// belongs to the command buffer
-	if( *end )
-		Cbuf_AddFilteredText( end );
+	CL_MotdBeginTemplate( path );
+	CL_MotdFeedTemplate( body + 1 );
 
 	return true;
 }

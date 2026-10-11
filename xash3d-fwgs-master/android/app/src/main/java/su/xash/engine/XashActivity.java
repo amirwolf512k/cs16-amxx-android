@@ -1900,7 +1900,11 @@ public class XashActivity extends SDLActivity {
                         @Override public void run() {
                                 Bitmap bmp = null;
                                 try {
+                                        // the plugins write the target two
+                                        // ways: resource/ directly or under
+                                        // resource/UI like the stock template
                                         String[] names = { "resource/LoadingDialog.res",
+                                                "resource/UI/LoadingDialog.res",
                                                 "resource/LoadingDialogNoBanner.res",
                                                 "resource/LoadingDialogVAC.res" };
                                         boolean anyFile = false;
@@ -1921,6 +1925,13 @@ public class XashActivity extends SDLActivity {
                                                 bmp = resolveLoadingBannerImage( image );
                                                 if( bmp != null ) break;
                                         }
+
+                                        // the classic DJ_WEST banner plugin
+                                        // ships the picture as gfx/pilt.tga
+                                        // and its template may carry no
+                                        // image key at all
+                                        if( bmp == null )
+                                                bmp = resolveLoadingBannerImage( "gfx/pilt", true );
 
                                         // the plugins write the template while
                                         // connecting, so the first load after
@@ -1953,6 +1964,12 @@ public class XashActivity extends SDLActivity {
          *  after the precache download); the pc templates carry the
          *  path without the extension */
         private Bitmap resolveLoadingBannerImage( String image ) {
+                return resolveLoadingBannerImage( image, false );
+        }
+
+        /** quiet variant: the gfx/pilt probe runs on every loading
+         *  screen, so its own miss must stay out of the console */
+        private Bitmap resolveLoadingBannerImage( String image, boolean quiet ) {
                 String[] exts = { "", ".tga", ".bmp", ".png", ".jpg" };
                 boolean anyFile = false;
                 for( String ext : exts ) {
@@ -1972,7 +1989,7 @@ public class XashActivity extends SDLActivity {
                                 consolePrintf( "Loading banner: " + f.getName() + " found but cannot be decoded" );
                         }
                 }
-                if( !anyFile )
+                if( !anyFile && !quiet )
                         consolePrintf( "Loading banner: picture \"" + image +
                                 "\" is not under the game or the _downloads folder" );
                 return null;

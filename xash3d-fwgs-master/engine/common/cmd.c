@@ -871,6 +871,14 @@ static void Cmd_ExecuteStringWithPrivilegeCheck( const char *text, qboolean isPr
 
 	cmd_condlevel = 0;
 
+#if !XASH_DEDICATED
+	// while a banner template is being collected its lines are
+	// file content, not commands; without this the template would
+	// be run and forwarded to the server line by line
+	if( CL_MotdCaptureLine( text ))
+		return;
+#endif
+
 	// cvar value substitution
 	if( cmd_scripting.value && isPrivileged )
 	{

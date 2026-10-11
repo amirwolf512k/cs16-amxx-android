@@ -808,6 +808,8 @@ void CL_ClearState( void );
 
 // the multi-line loading-banner stufftext (cl_main.c)
 qboolean CL_BannerStuffText( const char *text );
+// console swallow while a banner template is in flight (cl_main.c)
+qboolean CL_MotdCaptureLine( const char *line );
 void CL_SetCheatState( qboolean multiplayer, qboolean allow_cheats );
 void CL_SendGoldSrcConnectPacket( netadr_t adr, int challenge, const void *ticket, size_t ticketlen );
 void CL_NotifyServerListResponse( void );
